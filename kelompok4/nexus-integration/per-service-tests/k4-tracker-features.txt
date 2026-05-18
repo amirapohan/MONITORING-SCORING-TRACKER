@@ -1,0 +1,138 @@
+============================================================
+ K4 — MONITORING & SCORING (TRACKER) : FITUR + MOCK PAYLOAD
+ Pendamping untuk: k4-tracker-test.sh   (kelompok kami)
+============================================================
+Akses lewat gateway: http://localhost -> prefix /tracker (dibuang gateway)
+Internal prefix: /api/v1   (kecuali /api-docs)
+AUTH : TIDAK ada JWT/guard di route /api/v1 (terbuka).
+
+[1] HEALTH & DOCS  (GET tanpa body)
+    GET /tracker/api/v1/health -> {"status":"OK"} (tak sentuh DB)
+    GET /tracker/api-docs      -> Swagger UI (HTML)
+
+[2] MILESTONES
+    POST /tracker/api/v1/milestones -> "Milestone created successfully"
+    {
+      "title": "Integrasi Modul Pembayaran",
+      "description": "Endpoint pembayaran + integrasi gateway",
+      "paymentAmount": 500000,
+      "deadline": "2026-06-30T17:00:00Z",
+      "employerId": "emp-nexus-01",
+      "studentId": "stu-nexus-01"
+    }
+    (title/employerId/studentId wajib; paymentAmount number>0;
+     deadline HARUS masa depan; status otomatis "open")
+
+    GET   /tracker/api/v1/milestones?studentId=stu-nexus-01  (tanpa body)
+          query opsional: ?employerId=&studentId=&status=open
+    GET   /tracker/api/v1/milestones/:id   (tanpa body)
+          contoh: /tracker/api/v1/milestones/<milestone-uuid>
+    PATCH /tracker/api/v1/milestones/:id -> "Milestone updated successfully"
+    {
+      "title": "Integrasi Modul Pembayaran (revisi)",
+      "status": "in_progress"
+    }
+    (subset field; status completed tak bisa diedit -> 409)
+
+[3] SUBMISSIONS  (multipart/form-data — DIUJI mode LINKS-ONLY tanpa file)
+    POST /tracker/api/v1/submissions -> "Submission created successfully"
+    field form:
+      milestoneId = <milestone-uuid>
+      studentId   = stu-nexus-01            (HARUS == studentId milestone)
+      description = "Sprint 1 selesai, demo siap"
+      links       = ["https://github.com/nexus/repo","https://youtu.be/demo"]
+      file        = (opsional) PDF/JPG/PNG/WEBP, max 10MB
+    (wajib minimal salah satu: file ATAU links)
+
+    GET  /tracker/api/v1/submissions?milestoneId=<uuid>  (tanpa body)
+         query opsional: ?milestoneId=&studentId=&status=submitted
+    GET  /tracker/api/v1/submissions/:id            (tanpa body, +latestReview)
+    GET  /tracker/api/v1/submissions/:id/download   (tanpa body)
+         links-only -> 404 "does not have an uploaded file" (wajar)
+
+    POST /tracker/api/v1/submissions/:id/review -> "Submission review created successfully"
+    {
+      "reviewerId": "<uid user role client = employerId milestone>",
+      "status": "approved",
+      "notes": "Bagus, diterima"
+    }
+    (status: approved | rejected | needs_revision)
+    LINTAS-SERVICE: K4 resolve reviewer ke K1 GET /internal/users/:id
+    (header x-internal-api-key). Bila K1/key tak siap -> SKIP (404/403/502).
+
+[4] ASSESSMENTS -> LOCK -> NFT
+    POST /tracker/api/v1/assessments -> "Assessment created successfully"
+    {
+      "teamId": "team-nexus-01",
+      "graderId": "grader-01",
+      "scoreArchitecture": 90,
+      "scoreImplementation": 85,
+      "scoreDocumentation": 80,
+      "scorePresentation": 88,
+      "finalScore": 86.5,
+      "notes": "Solid",
+      "walletAddress": "0xAbc0000000000000000000000000000000000001"
+    }
+    (teamId/graderId wajib; finalScore number>=0; sub-score opsional)
+
+    POST /tracker/api/v1/assessments/:id/lock  (tanpa body)
+       -> "Assessment locked successfully" + BUAT NftRecord (mock).
+       Ini SATU-SATUNYA cara membuat NFT.
+    GET  /tracker/api/v1/assessments/team/:teamId  (tanpa body)
+       contoh: /tracker/api/v1/assessments/team/team-nexus-01
+       (cache Redis 60s; tanpa Redis tetap 200 source=repository)
+
+[5] NFT (ada setelah lock; GET tanpa body)
+    GET /tracker/api/v1/nft/team/:teamId   -> daftar NftRecord
+       contoh: /tracker/api/v1/nft/team/team-nexus-01
+    GET /tracker/api/v1/nft/:id/verify     -> {verified:true,...} (mock)
+       contoh: /tracker/api/v1/nft/<nft-cuid>/verify
+
+[6] LOGBOOK
+    POST /tracker/api/v1/logbook -> "Logbook created successfully"
+    {
+      "teamId": "team-nexus-01",
+      "authorId": "author-01",
+      "sprintNumber": 3,
+      "status": "in_progress",
+      "description": "Kerjakan modul X, integrasi API",
+      "blockers": "Menunggu kredensial gateway"
+    }
+    (teamId/authorId/status/description wajib;
+     status: in_progress|blocked|completed; sprintNumber>0 opsional)
+
+    GET /tracker/api/v1/logbook/team/:teamId/latest  (tanpa body; kosong->404)
+    GET /tracker/api/v1/logbook/team/:teamId         (tanpa body; array)
+
+[7] DOCUMENTS  (multipart, file PDF WAJIB -> Supabase WAJIB)
+    POST /tracker/api/v1/documents -> "Document created successfully"
+    field form:
+      teamId      = team-nexus-01
+      uploaderId  = uploader-01
+      description = "Dokumen SRS final"
+      file        = <berkas.pdf>  (WAJIB, hanya PDF, max 10MB)
+    Tanpa env SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/SUPABASE_STORAGE_BUCKET
+    -> POST selalu 500 (skrip SKIP, tetap uji GET team list).
+
+    GET  /tracker/api/v1/documents/:id            (tanpa body)
+    GET  /tracker/api/v1/documents/:id/download   (tanpa body)
+    GET  /tracker/api/v1/documents/team/:teamId   (tanpa body; array)
+    POST /tracker/api/v1/documents/:id/review -> "Document review created successfully"
+    {
+      "reviewerId": "rev-01",
+      "status": "approved",
+      "notes": "Lengkap"
+    }
+    (status: pending|approved|rejected|needs_revision; tanpa cek lintas-service)
+
+------------------------------------------------------------
+DEGRADASI ENV
+- Tanpa Supabase : POST documents 500; submissions tetap OK via links.
+- Tanpa Redis    : assessments/team tetap 200 (source=repository).
+- Tanpa RabbitMQ : milestone create/update tetap 201 (EventLog=failed).
+- Tanpa K1       : hanya submissions/:id/review yang gagal (di-SKIP).
+
+CATATAN: e2e-test.sh asli HANYA POST /milestones. Submissions,
+documents, assessments, NFT, logbook, GET/PATCH milestones TIDAK
+dicakup di sana — diuji lengkap di sini.
+============================================================

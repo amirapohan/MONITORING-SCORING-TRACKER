@@ -1,0 +1,69 @@
+============================================================
+ K5 — NOTIFICATION : CATATAN FITUR + MOCK PAYLOAD
+ Pendamping untuk: k5-notify-test.sh
+============================================================
+Akses lewat gateway: http://localhost -> prefix /notify (dibuang gateway)
+AUTH : tidak ada.
+
+[1] HEALTH
+    GET /notify/health  (tanpa body)
+    -> {"status":"ok","service":"notification"}
+
+[2] TRIGGER NOTIFIKASI MANUAL (untuk testing)
+    Respons HTTP SELALU 200 {"message":"Notification processed"} apa pun
+    hasil validasi -> bukti pemrosesan dicek di LOG container.
+    POST /notify/api/notifications/trigger
+    (event VALID — diproses, log "Selesai proses notifikasi")
+    {
+      "user_id": "stu-nexus-01",
+      "status": "ACCEPTED",
+      "email": "putri.anindya@mail.ugm.ac.id",
+      "project_id": "proj-nexus-01"
+    }
+    (varian REJECTED)
+    {
+      "user_id": "stu-nexus-01",
+      "status": "REJECTED",
+      "email": "putri.anindya@mail.ugm.ac.id",
+      "project_id": "proj-nexus-01"
+    }
+    (event TAK RELEVAN — status di luar ACCEPTED/REJECTED,
+     log "Status tidak perlu notifikasi", tetap HTTP 200)
+    {
+      "user_id": "stu-nexus-01",
+      "status": "PENDING",
+      "email": "putri.anindya@mail.ugm.ac.id"
+    }
+    Aturan: user_id, status, email WAJIB truthy (kurang -> log
+    "Event tidak valid"); status hanya ACCEPTED/REJECTED yang dikirim email.
+
+[3] MODE EMAIL LOG-ONLY
+    Aktif bila GMAIL_USER/GMAIL_PASS (atau SMTP_USER/SMTP_PASS) kosong.
+    Tidak benar-benar kirim email; log "[email:log-only] to=...".
+    (Tidak ada payload — perilaku ditentukan env.)
+
+[4] CONSUMER RABBITMQ (fitur utama K5 — milik K5)
+    Exchange "tracker.events" (topic), queue "notify.tracker",
+    binding "tracker.#". Tidak ada payload dikirim manual — event
+    mengalir dari K4 (langkah milestone/submission).
+    Pemetaan: submission_approved -> ACCEPTED ; submission_rejected -> REJECTED.
+    Bentuk event yang di-consume (untuk mencocokkan log svc-notify):
+    {
+      "event": "submission_approved",
+      "milestoneId": "<id milestone dari K4>",
+      "studentId": "stu-nexus-01",
+      "email": "putri.anindya@mail.ugm.ac.id",
+      "status": "approved"
+    }
+    Log bind  : "[rabbit] notify consuming exchange=tracker.events
+                 queue=notify.tracker key=tracker.#"
+    Log pesan : "[rabbit] event received routingKey=... type=..."
+    Tiap pesan disimpan saveLog(...,"CONSUMED") sebelum logika email.
+    (Alur publish->consume dari K4 sudah diuji di ../e2e-test.sh [5];
+     di sini kita verifikasi consumer K5 hidup & ter-bind.)
+
+------------------------------------------------------------
+CATATAN: e2e-test.sh asli hanya cek health + consume event milestone.
+Endpoint POST /api/notifications/trigger, jalur validasi, dan mode
+log-only TIDAK dicakup di sana — diuji di sini.
+============================================================

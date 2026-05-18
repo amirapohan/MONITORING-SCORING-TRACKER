@@ -1,0 +1,32 @@
+{
+  "name": "microservice-project-bidding",
+  "version": "1.0.0",
+  "description": "Microservice dari sistem **Capstone Platform**. Repositori ini memuat *source code* dan dokumentasi teknis untuk layanan Project Bidding.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agaggigit/microservice-project-bidding.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/agaggigit/microservice-project-bidding/issues"
+  },
+  "homepage": "https://github.com/agaggigit/microservice-project-bidding#readme",
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.11.3"
+  }
+}
+

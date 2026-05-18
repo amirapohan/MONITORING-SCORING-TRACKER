@@ -1,0 +1,118 @@
+============================================================
+ K1 — IDENTITY & SSO : CATATAN FITUR + MOCK PAYLOAD
+ Pendamping untuk: k1-auth-test.sh
+============================================================
+Akses lewat gateway: http://localhost  ->  prefix /auth (dibuang gateway)
+Mount internal service: /api/auth, /internal, /health, /api/
+PERSONA : email unik tiap run (k1_<ts>@nexus.dev), password Passw0rd!23
+
+[1] HEALTH & ROOT
+    GET /auth/health     -> {"status":"ok",...}
+    GET /auth/api/       -> "Welcome to identity-and-sso-service API"
+    (GET tanpa body)
+
+[2] REGISTER (talent/client) — role "admin" DITOLAK di form publik.
+    Sukses 201 "User registered successfully". Rate limit 5 / 60 menit.
+    POST /auth/api/auth/register
+    {
+      "name": "Putri Anindya",
+      "email": "putri.anindya@nexus.dev",
+      "password": "Passw0rd!23",
+      "role": "talent"
+    }
+    (akun client opsional)
+    {
+      "name": "CV Sumber Rejeki",
+      "email": "cv.sumberrejeki@nexus.dev",
+      "password": "Passw0rd!23",
+      "role": "client"
+    }
+
+[3] LOGIN (terbit JWT nyata) — respons: accessToken + refreshToken +
+    data.user. "Login successful". Rate limit 10 / 15 menit.
+    POST /auth/api/auth/login
+    {
+      "email": "putri.anindya@nexus.dev",
+      "password": "Passw0rd!23"
+    }
+
+[4] REFRESH TOKEN -> "Access token refreshed"
+    POST /auth/api/auth/refresh
+    {
+      "refreshToken": "<refreshToken dari langkah [3]>"
+    }
+
+[5] PROFILE (butuh header Authorization: Bearer <accessToken>)
+    GET /auth/api/auth/profile  (tanpa body) -> "Profile retrieved successfully"
+        (data.user + array projectCompletions)
+    PUT /auth/api/auth/profile -> "Profile updated successfully"
+    {
+      "name": "Putri Anindya (revisi)",
+      "password": "Passw0rd!23baru"
+    }
+    (kedua field opsional; password min 8 char)
+
+[6] GOOGLE OAUTH LOGIN — butuh idToken Google sah + env GOOGLE_CLIENT_ID.
+    Skrip hanya buktikan endpoint TERJANGKAU (token palsu -> 400/401).
+    POST /auth/api/auth/google
+    {
+      "idToken": "<google-id-token-asli>"
+    }
+
+[7] INTERNAL API — header x-internal-api-key: <INTERNAL_API_KEY>
+    (BUKAN JWT). Default contoh key "change-this-internal-api-key".
+    Key salah -> 401/503 (test di-SKIP). INILAH yang dipakai K3 & K4.
+
+    POST /auth/internal/validate-token  -> "Token is valid" (data.user = payload JWT)
+    {
+      "token": "<accessToken dari langkah [3]>"
+    }
+
+    GET  /auth/internal/users/:id        (tanpa body) -> "User found"
+       contoh path: /auth/internal/users/1fb8726e-d988-4e5f-98b8-ac3b468e80e7
+
+    GET  /auth/internal/users            (tanpa body) -> "Users retrieved"
+
+    GET  /auth/internal/audit-logs       (tanpa body, query opsional) -> "Audit logs retrieved"
+       contoh: /auth/internal/audit-logs?action=LOGIN&limit=20
+
+    GET  /auth/internal/talents/:talentId/project-completions (tanpa body)
+       contoh path: /auth/internal/talents/<uuid-talent>/project-completions
+
+    POST /auth/internal/project-completions  -> 201 "Project completion recorded"
+    {
+      "talent_id": "1fb8726e-d988-4e5f-98b8-ac3b468e80e7",
+      "project_id": "proj-nexus-01",
+      "token_id": "tok-001",
+      "ipfs_uri": "ipfs://QmXoyTr3w2Examplecid",
+      "completion_date": "2026-05-18T00:00:00.000Z"
+    }
+
+[8] ADMIN-ONLY — header Authorization: Bearer <accessToken role admin>.
+    Akun admin tak bisa dibuat via register publik -> default SKIP
+    (set ADMIN_EMAIL & ADMIN_PASSWORD untuk buka).
+
+    POST /auth/api/auth/register/admin  -> 201 "User registered successfully"
+    {
+      "name": "Admin Mid",
+      "email": "admin.mid@nexus.dev",
+      "password": "Passw0rd!23",
+      "role": "admin"
+    }
+
+    PATCH /auth/api/auth/users/:id/deactivate  (tanpa body)
+       -> "User deactivated successfully"
+       contoh path: /auth/api/auth/users/<uuid-user>/deactivate
+
+[9] LOGOUT (butuh Bearer; dijalankan terakhir karena mencabut token)
+    -> "Logged out successfully"
+    POST /auth/api/auth/logout
+    {
+      "refreshToken": "<refreshToken dari langkah [3]>"
+    }
+
+------------------------------------------------------------
+TIDAK DICAKUP e2e-test.sh asli : refresh, logout, profile GET/PUT,
+google, register/admin, users/:id/deactivate, dan SEMUA /internal/*
+selain validate-token. Semua itu diuji di sini.
+============================================================

@@ -1,0 +1,44 @@
+# ============================================================
+#  NEXUS — INFRA GROUP  (project: nexus-infra-group)
+#  Shared message broker + cache. Start this FIRST.
+#  Shares the external network `nexus-shared-net` with the
+#  db-group and svc-group so service names resolve cross-project.
+# ============================================================
+name: nexus-infra-group
+
+services:
+
+  redis-main:
+    image: redis:7-alpine
+    container_name: REDIS-main
+    ports:
+      - "6379:6379"
+    networks: [nexus-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rabbit-main:
+    image: rabbitmq:3-management
+    container_name: RABBIT-main
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS:-guest}
+    networks: [nexus-net]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+networks:
+  nexus-net:
+    external: true
+    name: nexus-shared-net

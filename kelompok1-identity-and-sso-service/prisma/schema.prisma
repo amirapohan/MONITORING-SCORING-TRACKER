@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  talent
+  client
+  admin
+}
+
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  REGISTER
+  TOKEN_REFRESH
+  USER_DEACTIVATED
+  PROJECT_COMPLETED
+}
+
+model User {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  name               String
+  username           String?                   @unique
+  email              String                    @unique
+  password           String?
+  role               UserRole                  @default(talent)
+  isActive           Boolean                   @default(true) @map("is_active")
+  refreshTokens      RefreshToken[]
+  oauthAccounts      UserOAuthAccount[]
+  profile            UserProfile?
+  portfolios         Portfolio[]
+  skills             UsersSkill[]
+  projectCompletions TalentProjectCompletion[]
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @db.Text
+  expiresAt DateTime @map("expires_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model UserOAuthAccount {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  provider   String
+  providerId String   @map("provider_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, providerId])
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("user_oauth_accounts")
+}
+
+model UserProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("users_id") @db.Uuid
+  headline           String?
+  bio                String?
+  location           String?
+  availabilityStatus String?  @map("availability_status")
+  hourlyRate         Decimal? @map("hourly_rate") @db.Decimal(12, 2)
+  experienceLevel    String?  @map("experience_level")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("user_profiles")
+}
+
+model Portfolio {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  title       String
+  type        String
+  description String?
+  url         String?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+model SkillCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  skills    Skill[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("skill_categories")
+}
+
+model Skill {
+  id              String        @id @default(uuid()) @db.Uuid
+  skillCategoryId String        @map("skill_categories_id") @db.Uuid
+  name            String
+  category        SkillCategory @relation(fields: [skillCategoryId], references: [id], onDelete: Restrict)
+  subSkills       SubSkill[]
+  users           UsersSkill[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@unique([skillCategoryId, name])
+  @@index([skillCategoryId])
+  @@map("skills")
+}
+
+model SubSkill {
+  id        String   @id @default(uuid()) @db.Uuid
+  skillId   String   @map("skills_id") @db.Uuid
+  name      String
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([skillId, name])
+  @@index([skillId])
+  @@map("sub_skills")
+}
+
+model AuditLog {
+  id        String      @id @default(uuid()) @db.Uuid
+  action    AuditAction
+  userId    String?     @map("user_id") @db.Uuid
+  ip        String?
+  userAgent String?     @map("user_agent")
+  metadata  Json?
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model UsersSkill {
+  userId    String   @map("users_id") @db.Uuid
+  skillId   String   @map("skills_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([userId, skillId])
+  @@index([skillId])
+  @@map("users_skills")
+}
+
+model TalentProjectCompletion {
+  id             String   @id @default(uuid()) @db.Uuid
+  talentId       String   @map("talent_id") @db.Uuid
+  projectId      String   @map("project_id")
+  tokenId        String   @map("token_id")
+  ipfsUri        String   @map("ipfs_uri")
+  completionDate DateTime @map("completion_date")
+  talent         User     @relation(fields: [talentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([talentId, projectId])
+  @@index([talentId])
+  @@index([projectId])
+  @@map("talent_project_completions")
+}

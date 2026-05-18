@@ -1,0 +1,870 @@
+openapi: 3.0.0
+info:
+  title: API Identity & SSO Service (Updated)
+  description: |
+    Dokumentasi lengkap API untuk Identity & SSO Service (Authentication Service)
+
+    Sistem autentikasi untuk platform bidding capstone projects dengan dukungan:
+    - Autentikasi JWT (Bearer token)
+    - Google OAuth integration
+    - Internal API endpoints (admin/system use)
+
+    **Role dalam Sistem:**
+    - Client: User pencari proyek/talent
+    - Freelancer: User pemberi proyek/services
+    - Admin: Administrator sistem
+
+    **Status**: Development & Testing
+
+    **Base URL**: http://localhost:3000
+
+    **Fitur Utama**:
+    - Registrasi user (Client, Freelancer, Admin)
+    - Login & logout (JWT-based)
+    - Google OAuth login via idToken
+    - Manajemen token JWT (access token 15 min, refresh token 7 days)
+    - Profil user (view & update)
+    - Internal API endpoints (dengan x-internal-api-key header)
+    - Validasi input lengkap
+  version: 2.0.0
+  contact:
+    name: Tim Development
+    url: https://github.com/your-org/capstone-bidding
+
+servers:
+  - url: http://localhost:3000
+    description: Server Development Lokal
+  - url: http://api.example.com
+    description: Server Production
+
+tags:
+  - name: Health
+    description: Endpoint untuk pengecekan status layanan
+  - name: Authentication
+    description: Endpoint registrasi, login, logout, refresh token
+  - name: OAuth
+    description: Endpoint Google OAuth integration
+  - name: Profile
+    description: Endpoint untuk melihat dan mengubah profil user
+  - name: Internal
+    description: Internal API endpoints (memerlukan x-internal-api-key header)
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Cek Status Layanan
+      description: Endpoint untuk memverifikasi bahwa layanan auth service masih berjalan dengan baik
+      operationId: getHealth
+      responses:
+        "200":
+          description: Layanan berjalan normal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Registrasi User Baru
+      description: |
+        Endpoint untuk registrasi user baru. 
+        User bisa register sebagai Client (pencari proyek), Freelancer (pemberi proyek), atau Admin.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            examples:
+              client:
+                summary: Registrasi sebagai Client
+                value:
+                  name: "Jonathan Alvarado"
+                  email: "jonathan@talent.com"
+                  password: "JonathanPass@123"
+                  role: "client"
+              freelancer:
+                summary: Registrasi sebagai Freelancer
+                value:
+                  name: "PT Digital Indonesia"
+                  email: "contact@ptdigital.com"
+                  password: "PTDigital@123"
+                  role: "freelancer"
+      responses:
+        "201":
+          description: User berhasil didaftarkan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Validasi gagal (nama kosong, email format, password terlalu pendek)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email sudah terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login User
+      description: Endpoint untuk login user dengan email dan password. Mengembalikan access token dan refresh token.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Email tidak terdaftar atau password salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Email atau password tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Perbarui Access Token
+      description: Gunakan refresh token untuk mendapatkan access token baru. Berguna ketika access token sudah expired (15 minutes).
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshTokenResponse"
+        "400":
+          description: Refresh token tidak ada di request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Refresh token tidak valid atau sudah expired (7 days)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout User
+      description: Endpoint untuk logout. Refresh token akan dihapus dari database sehingga tidak bisa digunakan lagi.
+      operationId: logoutUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "200":
+          description: Logout berhasil, session dihapus
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Token tidak ada atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Refresh token tidak ada di request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/profile:
+    get:
+      tags:
+        - Profile
+      summary: Lihat Profil User
+      description: Endpoint untuk melihat data profil user yang sedang login. Memerlukan access token yang valid.
+      operationId: getProfile
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data profil berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "401":
+          description: Token tidak ada atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      tags:
+        - Profile
+      summary: Update Profil User
+      description: |
+        Endpoint untuk update profil user. 
+        User bisa update nama dan/atau password.
+        Role tidak bisa diubah.
+      operationId: updateProfile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profil berhasil diupdate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "400":
+          description: Validasi gagal (password terlalu pendek, nama kosong)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak ada atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/google:
+    post:
+      tags:
+        - OAuth
+      summary: Google OAuth Login
+      description: |
+        Endpoint untuk login menggunakan Google OAuth.
+        Client mengirimkan idToken yang didapat dari Google Authentication Library.
+        Server akan memvalidasi idToken dan mengembalikan access token + refresh token.
+      operationId: googleOAuthLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleOAuthRequest"
+      responses:
+        "200":
+          description: Google OAuth login berhasil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: idToken tidak ada atau format salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: idToken tidak valid atau signature tidak sesuai
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/users:
+    get:
+      tags:
+        - Internal
+      summary: List All Users (Internal)
+      description: Internal endpoint untuk mendapatkan list semua user. Memerlukan x-internal-api-key header.
+      operationId: listAllUsers
+      security:
+        - InternalApiKey: []
+      parameters:
+        - name: limit
+          in: query
+          description: Jumlah user yang diambil (default 50, max 100)
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: offset
+          in: query
+          description: Offset untuk pagination (default 0)
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List users berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsersListResponse"
+        "401":
+          description: API key tidak ada atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/users/{userId}:
+    get:
+      tags:
+        - Internal
+      summary: Get User Detail (Internal)
+      description: Internal endpoint untuk mendapatkan detail user berdasarkan ID. Memerlukan x-internal-api-key header.
+      operationId: getUserDetail
+      security:
+        - InternalApiKey: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: UUID dari user
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User detail berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetailResponse"
+        "401":
+          description: API key tidak ada atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/validate-token:
+    post:
+      tags:
+        - Internal
+      summary: Validate Access Token (Internal)
+      description: |
+        Internal endpoint untuk memvalidasi access token.
+        Memerlukan x-internal-api-key header.
+        Mengembalikan informasi tentang token validity dan decoded payload.
+      operationId: validateToken
+      security:
+        - InternalApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateTokenRequest"
+      responses:
+        "200":
+          description: Token validation berhasil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateTokenResponse"
+        "400":
+          description: Token tidak ada di request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: API key tidak valid atau token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/audit-logs:
+    get:
+      tags:
+        - Internal
+      summary: Get Audit Logs (Internal)
+      description: |
+        Internal endpoint untuk mendapatkan audit logs (aktivitas user).
+        Memerlukan x-internal-api-key header.
+      operationId: getAuditLogs
+      security:
+        - InternalApiKey: []
+      parameters:
+        - name: limit
+          in: query
+          description: Jumlah logs yang diambil (default 50, max 500)
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+        - name: userId
+          in: query
+          description: Filter berdasarkan user ID (optional)
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          description: Filter berdasarkan tipe action - login, logout, register, update_profile (optional)
+          schema:
+            type: string
+            enum: [login, logout, register, update_profile]
+      responses:
+        "200":
+          description: Audit logs berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogsResponse"
+        "401":
+          description: API key tidak ada atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    User:
+      type: object
+      description: Data user dalam sistem
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier user
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Nama user
+          example: "Jonathan Alvarado"
+        email:
+          type: string
+          format: email
+          description: Email user (unique)
+          example: "jonathan@talent.com"
+        role:
+          type: string
+          enum: [client, freelancer, admin]
+          description: Role user dalam sistem
+          example: "client"
+        is_active:
+          type: boolean
+          description: Status aktif user
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-05-13T10:30:00.000Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-05-13T10:30:00.000Z"
+
+    HealthResponse:
+      type: object
+      description: Response health check
+      properties:
+        success:
+          type: boolean
+          example: true
+        status:
+          type: string
+          example: "ok"
+        service:
+          type: string
+          example: "auth-service"
+        uptime:
+          type: number
+          example: 3600.5
+        timestamp:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      description: Request body untuk registrasi user
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Nama user
+          example: "Jonathan Alvarado"
+        email:
+          type: string
+          format: email
+          description: Email user (harus unik)
+          example: "jonathan@talent.com"
+        password:
+          type: string
+          minLength: 8
+          description: Password user (minimal 8 karakter)
+          example: "JonathanPass@123"
+        role:
+          type: string
+          enum: [client, freelancer, admin]
+          description: Role user (optional, default client)
+          example: "client"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      description: Request body untuk login
+      properties:
+        email:
+          type: string
+          format: email
+          example: "jonathan@talent.com"
+        password:
+          type: string
+          example: "JonathanPass@123"
+
+    GoogleOAuthRequest:
+      type: object
+      required:
+        - idToken
+      description: Request body untuk Google OAuth login
+      properties:
+        idToken:
+          type: string
+          description: ID token dari Google Authentication Library
+          example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ..."
+
+    LoginResponse:
+      type: object
+      description: Response login berhasil
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Login berhasil"
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+            accessToken:
+              type: string
+              description: JWT access token (valid 15 minutes)
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            refreshToken:
+              type: string
+              description: JWT refresh token (valid 7 days)
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    UserResponse:
+      type: object
+      description: Response berisi data user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "User berhasil didaftarkan"
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      description: Request body untuk refresh token
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh token yang valid
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    RefreshTokenResponse:
+      type: object
+      description: Response setelah refresh token berhasil
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Token berhasil diperbarui"
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+              description: Access token baru
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    LogoutRequest:
+      type: object
+      required:
+        - refreshToken
+      description: Request body untuk logout
+      properties:
+        refreshToken:
+          type: string
+          description: Token refresh yang akan dihapus
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    UpdateProfileRequest:
+      type: object
+      description: Request body untuk update profil user
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Nama baru user
+          example: "Jonathan Pratama"
+        password:
+          type: string
+          minLength: 8
+          description: Password baru user (minimal 8 karakter)
+          example: "NewPassword@123"
+
+    ProfileResponse:
+      type: object
+      description: Response berisi data profil user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Data profil berhasil diambil"
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+
+    ValidateTokenRequest:
+      type: object
+      required:
+        - token
+      description: Request body untuk validate token
+      properties:
+        token:
+          type: string
+          description: Access token yang akan divalidasi
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    ValidateTokenResponse:
+      type: object
+      description: Response token validation
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            valid:
+              type: boolean
+              description: Token validity status
+              example: true
+            decoded:
+              type: object
+              description: Decoded JWT payload
+              properties:
+                sub:
+                  type: string
+                  description: User ID (subject claim)
+                email:
+                  type: string
+                iat:
+                  type: integer
+                  description: Issued at (Unix timestamp)
+                exp:
+                  type: integer
+                  description: Expiration (Unix timestamp)
+
+    UsersListResponse:
+      type: object
+      description: Response list users (internal)
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 150
+            limit:
+              type: integer
+              example: 50
+            offset:
+              type: integer
+              example: 0
+
+    UserDetailResponse:
+      type: object
+      description: Response user detail (internal)
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+
+    AuditLog:
+      type: object
+      description: Single audit log entry
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [login, logout, register, update_profile]
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    AuditLogsResponse:
+      type: object
+      description: Response audit logs list (internal)
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 500
+            limit:
+              type: integer
+              example: 50
+
+    SuccessResponse:
+      type: object
+      description: Response sukses untuk operasi tanpa data khusus
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operasi berhasil"
+
+    ErrorResponse:
+      type: object
+      description: Response error dengan detail pesan
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          description: Pesan error umum
+          example: "Terjadi kesalahan"
+        errors:
+          type: array
+          description: Detail error per field (jika ada)
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                description: Nama field yang error
+              message:
+                type: string
+                description: Pesan error spesifik
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT Bearer token yang didapatkan dari endpoint login.
+        Gunakan di Authorization header: `Authorization: Bearer <token>`
+        Validitas: 15 minutes
+
+    InternalApiKey:
+      type: apiKey
+      in: header
+      name: x-internal-api-key
+      description: |
+        API Key untuk internal endpoints.
+        Gunakan di header: `x-internal-api-key: <your-api-key>`
+
+security:
+  - BearerAuth: []

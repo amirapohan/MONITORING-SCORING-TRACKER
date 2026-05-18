@@ -1,0 +1,149 @@
+============================================================
+ NEXUS — CATATAN FITUR YANG DITESTING (END-TO-END)
+ Pendamping untuk: e2e-test.sh
+============================================================
+
+Semua diakses lewat 1 API Gateway: http://localhost
+Gateway membuang prefix lalu meneruskan ke service internal (port 8080).
+
+
+PEMETAAN SERVICE / KELOMPOK
+------------------------------------------------------------
+ Kelompok 1  : Identity & SSO Service        -> svc-auth   (/auth)
+ Kelompok 2  : Project Bidding Service       -> svc-bidding (/bidding)
+ Kelompok 3  : Team Matching Service         -> svc-match  (/match)
+ Kelompok 4  : Monitoring & Scoring (Tracker)-> svc-audit  (/tracker)   <- kelompok kami
+ Kelompok 5  : Notification Service          -> svc-notify (/notify)
+ Infra bersama: API Gateway (nginx), RabbitMQ, Redis
+                Orkestrasi (compose + gateway) disusun oleh Kelompok 4.
+
+
+============================================================
+ DAFTAR FITUR YANG DITESTING + PERAN TIAP KELOMPOK
+============================================================
+ PERSONA BERSAMA (dipakai konsisten di fitur [2]->[3]->[4]->[5])
+   Talent : "Putri Anindya"  role talent -> student di K3
+            id lintas service : stu-nexus-01
+   Client : "CV Sumber Rejeki"  role client
+            id lintas service : emp-nexus-01
+   Password semua akun : Passw0rd!23
+   (email talent dibuat unik tiap run bila DB auth tidak di-reset)
+
+[1] HEALTH CHECK SEMUA SERVICE LEWAT GATEWAY
+    Deskripsi : Membuktikan ke-5 service hidup & terjangkau via 1 gateway.
+    Endpoint  : /healthz, /auth/health, /bidding/, /match/health,
+                /tracker/api/v1/health, /notify/health
+    Peran     :
+      - Kelompok 4 : menyediakan & mengatur API Gateway + orkestrasi compose.
+      - Kelompok 1-5: tiap service menyediakan endpoint health-nya.
+    Payload    : (tidak ada — semua GET tanpa body)
+
+[2] AUTENTIKASI: REGISTER + LOGIN (JWT NYATA)
+    Deskripsi : User register lalu login, server menerbitkan JWT (access token).
+    Endpoint  : POST /auth/api/auth/register, POST /auth/api/auth/login
+    Peran     :
+      - Kelompok 1 : PEMILIK fitur. Manajemen user, hashing password,
+                     penerbitan JWT, penyimpanan ke DB auth (Prisma).
+    Payload    :
+      POST /auth/api/auth/register
+      {
+        "name": "Putri Anindya",
+        "email": "putri.anindya@nexus.dev",
+        "password": "Passw0rd!23",
+        "role": "talent"
+      }
+      (opsional akun client)
+      {
+        "name": "CV Sumber Rejeki",
+        "email": "cv.sumberrejeki@nexus.dev",
+        "password": "Passw0rd!23",
+        "role": "client"
+      }
+      POST /auth/api/auth/login
+      {
+        "email": "putri.anindya@nexus.dev",
+        "password": "Passw0rd!23"
+      }
+      Catatan : role valid = talent | client | admin.
+                respons login berisi "accessToken" (JWT) -> dipakai [3].
+
+[3] AUTORISASI LINTAS-SERVICE (JWT KELOMPOK 1 DIVERIFIKASI KELOMPOK 3)
+    Deskripsi : Token dari Kelompok 1 dipakai mengakses endpoint terproteksi
+                milik Kelompok 3. Kelompok 3 memvalidasi token ke API internal
+                Kelompok 1 (POST /internal/validate-token, header
+                x-internal-api-key), lalu memetakan role talent -> student.
+    Endpoint  : GET /match/me  (header Authorization: Bearer <token>)
+    Peran     :
+      - Kelompok 3 : PEMILIK endpoint terproteksi + middleware auth yang
+                     memanggil service Kelompok 1 untuk validasi token.
+      - Kelompok 1 : menyediakan API internal validasi token + data user.
+    Payload    :
+      GET /match/me   (tanpa body)
+      Header:
+        Authorization: Bearer <accessToken dari langkah [2]>
+      Harapan respons : ada "student_id" dan "role":"student"
+      (bukti role talent K1 dipetakan jadi student oleh K3)
+
+[4] PEMBUATAN MILESTONE + PUBLISH EVENT (OUTBOX -> RABBITMQ)
+    Deskripsi : Membuat milestone di service Tracker; service mem-publish
+                event "milestone_created" ke RabbitMQ exchange
+                "tracker.events" (routing key tracker.milestone.created).
+    Endpoint  : POST /tracker/api/v1/milestones
+    Peran     :
+      - Kelompok 4 : PEMILIK fitur. Domain milestone (Prisma/PostgreSQL),
+                     pola outbox, publisher RabbitMQ.
+      - Infra      : RabbitMQ (broker pesan bersama).
+    Payload    :
+      POST /tracker/api/v1/milestones
+      {
+        "title": "Integrasi Modul Pembayaran",
+        "description": "Membuat endpoint pembayaran + integrasi gateway",
+        "paymentAmount": 500000,
+        "deadline": "2026-06-30T17:00:00Z",
+        "employerId": "emp-nexus-01",
+        "studentId": "stu-nexus-01"
+      }
+      Aturan validasi K4:
+        - title, employerId, studentId : string wajib (tidak kosong).
+        - paymentAmount : number > 0 (bukan string).
+        - deadline      : datetime valid & HARUS di masa depan
+                          (ganti bila tanggal di atas sudah lewat;
+                           e2e-test.sh memakai now + 7 hari).
+        - description   : opsional.
+        - status        : otomatis "open" (tidak perlu dikirim).
+
+[5] KONSUMSI EVENT (RABBITMQ -> NOTIFICATION)
+    Deskripsi : Service Notification berlangganan exchange "tracker.events"
+                dan meng-consume event yang dipublish di langkah [4]
+                (queue notify.tracker), mencatat/log event tersebut.
+    Bukti     : log svc-notify -> "[rabbit] event received ... CONSUMED"
+    Peran     :
+      - Kelompok 5 : PEMILIK consumer RabbitMQ (subscribe + proses event).
+      - Kelompok 4 : sumber event (publisher) dari langkah [4].
+      - Infra      : RabbitMQ (broker).
+    Payload    : (tidak ada yang dikirim manual — event mengalir dari [4])
+      Bentuk event yang di-consume (untuk mencocokkan log svc-notify):
+      {
+        "event": "milestone_created",
+        "milestoneId": "<id milestone dari langkah [4]>",
+        "employerId": "emp-nexus-01",
+        "studentId": "stu-nexus-01",
+        "status": "open",
+        "deadline": "2026-06-30T17:00:00Z"
+      }
+
+
+============================================================
+ CATATAN / BATASAN
+============================================================
+- Kelompok 2 (Bidding): pada test ini hanya diverifikasi service-nya HIDUP
+  & terjangkau lewat gateway (smoke). Alur "bidding -> notify" BELUM dibuat
+  (service bidding belum punya integrasi keluar / publisher event).
+- Email Kelompok 5: mode log-only kalau GMAIL_USER/GMAIL_PASS kosong di .env
+  (tidak benar-benar mengirim email; event tetap terbukti ter-consume).
+- Fitur upload dokumen/submission Tracker butuh SUPABASE_URL &
+  SUPABASE_SERVICE_ROLE_KEY di .env; tanpa itu service tetap jalan, hanya
+  endpoint upload yang degrade (tidak termasuk dalam test otomatis ini).
+- Prasyarat test: Docker Desktop running, `docker compose up -d` sudah
+  jalan, dan semua container "healthy" (cek: docker compose ps).
+============================================================

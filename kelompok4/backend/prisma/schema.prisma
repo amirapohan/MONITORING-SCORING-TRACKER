@@ -1,0 +1,169 @@
+// Skema database untuk service Monitoring & Scoring (svc-audit).
+// Migrasi dijalankan otomatis saat container start (lihat docker-entrypoint.sh).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Assessment {
+  id                  String   @id @default(cuid())
+  teamId              String
+  graderId            String
+  scoreArchitecture   Float?
+  scoreImplementation Float?
+  scoreDocumentation  Float?
+  scorePresentation   Float?
+  finalScore          Float
+  notes               String?
+  walletAddress       String?
+  isLocked            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  nftRecords NftRecord[]
+
+  @@index([teamId])
+}
+
+model Logbook {
+  id           String   @id @default(cuid())
+  teamId       String
+  authorId     String
+  sprintNumber Int?
+  status       String
+  description  String
+  blockers     String?
+  createdAt    DateTime @default(now())
+
+  @@index([teamId])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  teamId      String
+  uploaderId  String
+  fileUrl     String
+  fileName    String
+  fileType    String
+  fileSize    Int
+  fileHash    String
+  description String?
+  createdAt   DateTime @default(now())
+
+  reviews DocumentReview[]
+
+  @@index([teamId])
+}
+
+model NftRecord {
+  id              String   @id @default(cuid())
+  assessmentId    String
+  teamId          String
+  walletAddress   String
+  contractAddress String
+  tokenId         String
+  txHash          String
+  network         String
+  metadataUri     String
+  mintedAt        DateTime @default(now())
+  verifyStatus    String   @default("mock_verified")
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+
+  @@index([teamId])
+}
+
+// ----- Ported from origin/develop (was raw SQL) -> Prisma -----
+// `users` FKs intentionally dropped: users are owned by svc-auth (group 1).
+// employer/student/reviewer/uploader ids are plain Strings (UUID from auth),
+// matching the existing teamId/graderId convention above.
+// CHECK constraints & append-only triggers are enforced in the service layer.
+
+model EventLog {
+  id          String   @id @default(uuid())
+  eventType   String
+  payload     Json
+  publishedAt DateTime @default(now())
+  status      String   @default("pending") // pending | sent | failed
+
+  @@index([eventType, publishedAt])
+  @@index([status, publishedAt])
+}
+
+model Milestone {
+  id            String   @id @default(uuid())
+  title         String
+  paymentAmount Decimal  @db.Decimal(12, 2)
+  description   String?
+  deadline      DateTime
+  employerId    String
+  studentId     String
+  status        String   @default("open") // open | in_progress | completed | cancelled
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  submissions MilestoneSubmission[]
+
+  @@index([employerId, createdAt])
+  @@index([studentId, createdAt])
+  @@index([status])
+  @@index([deadline])
+}
+
+model MilestoneSubmission {
+  id          String    @id @default(uuid())
+  milestoneId String
+  studentId   String
+  description String
+  fileUrl     String?
+  fileName    String?
+  fileType    String?
+  fileSize    BigInt?
+  fileHash    String?
+  links       Json      @default("[]")
+  status      String    @default("submitted") // submitted | approved | rejected | needs_revision
+  submittedAt DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  approvedBy  String?
+  approvedAt  DateTime?
+
+  milestone Milestone                   @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  reviews   MilestoneSubmissionReview[]
+
+  @@unique([milestoneId, studentId])
+  @@index([milestoneId, submittedAt])
+  @@index([studentId, submittedAt])
+  @@index([status])
+}
+
+model MilestoneSubmissionReview {
+  id           String   @id @default(uuid())
+  submissionId String
+  reviewerId   String
+  status       String // approved | rejected | needs_revision
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  submission MilestoneSubmission @relation(fields: [submissionId], references: [id])
+
+  @@index([submissionId, createdAt])
+  @@index([reviewerId])
+}
+
+model DocumentReview {
+  id         String   @id @default(uuid())
+  documentId String
+  reviewerId String
+  status     String // pending | approved | rejected | needs_revision
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@index([documentId, createdAt])
+  @@index([reviewerId])
+}

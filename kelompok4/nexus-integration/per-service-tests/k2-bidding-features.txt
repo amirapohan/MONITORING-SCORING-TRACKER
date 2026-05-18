@@ -1,0 +1,62 @@
+============================================================
+ K2 — PROJECT BIDDING : CATATAN FITUR + MOCK PAYLOAD
+ Pendamping untuk: k2-bidding-test.sh
+============================================================
+Akses lewat gateway: http://localhost  ->  prefix /bidding (dibuang gateway)
+AUTH : TIDAK ADA auth/JWT (semua endpoint terbuka).
+STATUS: sebagian endpoint masih STUB (echo string, tak sentuh DB).
+
+[1] LIVENESS / ROOT
+    GET /bidding/                    (tanpa body)
+    -> "Halo ini layanan bidding" (text)
+
+[2] STUB GET PROJECT — TIDAK query DB, selalu 200 (placeholder).
+    GET /bidding/api/projects/:id    (tanpa body)
+       contoh: GET /bidding/api/projects/42
+    -> "this is 42 project" (text)
+
+[3] STUB GET BID — STUB juga; tidak mengambil bid hasil POST.
+    GET /bidding/api/bidding/:id     (tanpa body)
+       contoh: GET /bidding/api/bidding/7
+    -> "ini adalah bidding 7" (text)
+
+[4] CREATE BID (satu-satunya endpoint yang menyentuh DB)
+    Sukses 201: "Bid created successfully" + data.bid_id.
+    POST /bidding/api/bidding/
+    {
+      "group_id": "G1",
+      "project_id": 1,
+      "priority": 1,
+      "document_url": "https://drive.nexus.dev/proposal-g1.pdf",
+      "student_id": "M1"
+    }
+    Aturan tiap field:
+      - group_id   : string, HARUS ada di tabel kelompok.kelompok_id
+      - project_id : integer, HARUS ada di proyek (status != 'Closed')
+      - priority   : integer >= 1 (kirim ANGKA, bukan "1")
+      - document_url: string non-kosong
+      - student_id : string, HARUS ada di mahasiswa.mahasiswa_id
+    Contoh body untuk uji penolakan field wajib (-> VALIDATION_ERROR):
+    {
+      "group_id": "X"
+    }
+    Error terstruktur (JSON {"code":...}):
+      VALIDATION_ERROR / PROJECT_NOT_FOUND / PROJECT_CLOSED /
+      GROUP_NOT_FOUND / STUDENT_NOT_FOUND / DUPLICATE_BID(409) / SERVER_ERROR
+
+    PRASYARAT DATA (TIDAK di-seed otomatis; database_schema.sql manual).
+    Contoh seed SQL agar body di atas sukses 201:
+      INSERT INTO mitra (nama_mitra, kontak_mitra) VALUES ('Test Mitra','x@x.com');
+      INSERT INTO proyek (mitra_id, judul_proyek, deskripsi_proyek, kuota_maksimal, status_proyek)
+        VALUES (1,'Test Proj','desc',5,'Open');
+      INSERT INTO kelompok (kelompok_id, nama_kelompok) VALUES ('G1','Grup 1');
+      INSERT INTO mahasiswa (mahasiswa_id, nama_lengkap, nim) VALUES ('M1','Mhs Satu','111');
+    Tanpa seed: skrip tetap membuktikan endpoint hidup + validasi jalan
+    (menerima 201 ATAU error code terstruktur), lalu SKIP jalur sukses.
+
+------------------------------------------------------------
+KETERBATASAN (sesuai catatan e2e asli)
+- e2e-test.sh asli hanya smoke "service hidup". Endpoint
+  projects/bidding GET/POST di atas TIDAK dicakup di sana.
+- Alur "bidding -> notify" belum ada (tak ada publisher event).
+============================================================

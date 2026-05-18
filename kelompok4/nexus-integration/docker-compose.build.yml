@@ -1,0 +1,27 @@
+# ============================================================
+#  Override OPSIONAL: build dari source, bukan dari Docker Hub.
+#  Pakai ini kalau tim belum push image ke registry.
+#
+#  Syarat: clone tiap repo ke folder sebelah:
+#    nexus-integration/
+#    ../identity-and-sso-service
+#    ../microservice-project-bidding
+#    ../team-matching-service
+#    ../monitoring-scoring-tracker   (repo ini)
+#    ../apl-notification
+#
+#  Jalankan:
+#    docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# ============================================================
+
+services:
+  svc-auth:
+    build: ../identity-and-sso-service
+  svc-bidding:
+    build: ../microservice-project-bidding
+  svc-match:
+    build: ../team-matching-service
+  svc-audit:
+    build: ../monitoring-scoring-tracker/backend
+  svc-notify:
+    build: ../apl-notification

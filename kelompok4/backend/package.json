@@ -1,0 +1,35 @@
+{
+  "name": "monitoring-scoring-tracker",
+  "version": "1.0.0",
+  "description": "Aplikasi Monitoring dan Scoring Tracker project Mata Kuliah Arsitektur Perangkat Lunak",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scientivan/monitoring-scoring-tracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/scientivan/monitoring-scoring-tracker/issues"
+  },
+  "homepage": "https://github.com/scientivan/monitoring-scoring-tracker#readme",
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "amqplib": "^0.10.4",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.1",
+    "multer": "^2.0.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "yamljs": "^0.3.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3"
+  }
+}

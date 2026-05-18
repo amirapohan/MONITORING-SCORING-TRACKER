@@ -1,0 +1,604 @@
+openapi: 3.0.0
+info:
+  title: API Project Monitoring & Scoring (Tracker)
+  description: REST API documentation for the monitoring and scoring tracker.
+  version: 1.0.0
+  contact:
+    name: Tim Developer
+    email: dev@example.com
+
+servers:
+  - url: "http://localhost:3000/"
+    description: Development server
+
+tags:
+  - name: System
+    description: System endpoints
+  - name: Documents
+    description: Document-related operations
+  - name: Logbook
+    description: Logbook-related operations
+  - name: Assessments
+    description: Assessment-related operations
+  - name: NFT
+    description: NFT-related operations
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Check server health
+      tags:
+        - System
+      responses:
+        "200":
+          description: Server is healthy
+
+  /api/v1/documents:
+    post:
+      summary: Upload a new document
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentCreateInput"
+      responses:
+        "201":
+          description: Document created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardErrorResponse"
+
+  /api/v1/documents/team/{teamId}:
+    get:
+      summary: List documents by team
+      tags:
+        - Documents
+      parameters:
+        - in: path
+          name: teamId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Documents retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentListResponse"
+
+  /api/v1/documents/{id}:
+    get:
+      summary: Get document detail
+      tags:
+        - Documents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardErrorResponse"
+
+  /api/v1/documents/{id}/download:
+    get:
+      summary: Download document placeholder
+      tags:
+        - Documents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document download link retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDownloadResponse"
+
+  /api/v1/logbook:
+    post:
+      summary: Create logbook entry
+      tags:
+        - Logbook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogbookCreateInput"
+      responses:
+        "201":
+          description: Logbook created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogbookResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardErrorResponse"
+
+  /api/v1/logbook/team/{teamId}:
+    get:
+      summary: List logbook entries by team
+      tags:
+        - Logbook
+      parameters:
+        - in: path
+          name: teamId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Logbooks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogbookListResponse"
+
+  /api/v1/logbook/team/{teamId}/latest:
+    get:
+      summary: Get latest logbook entry by team
+      tags:
+        - Logbook
+      parameters:
+        - in: path
+          name: teamId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest logbook retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogbookResponse"
+
+  /api/v1/assessments:
+    post:
+      summary: Create assessment draft
+      tags:
+        - Assessments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssessmentCreateInput"
+      responses:
+        "201":
+          description: Assessment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentResponse"
+
+  /api/v1/assessments/{id}/lock:
+    post:
+      summary: Lock assessment and trigger NFT placeholder
+      tags:
+        - Assessments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assessment locked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentLockResponse"
+
+  /api/v1/assessments/team/{teamId}:
+    get:
+      summary: List assessments by team
+      tags:
+        - Assessments
+      parameters:
+        - in: path
+          name: teamId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assessments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentListResponse"
+
+  /api/v1/nft/team/{teamId}:
+    get:
+      summary: List NFT records by team
+      tags:
+        - NFT
+      parameters:
+        - in: path
+          name: teamId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: NFT records retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NftListResponse"
+
+  /api/v1/nft/{id}/verify:
+    get:
+      summary: Verify NFT placeholder
+      tags:
+        - NFT
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: NFT verification completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NftVerifyResponse"
+
+components:
+  schemas:
+    StandardErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Field 'teamId' is required
+            timestamp:
+              type: string
+              format: date-time
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        teamId:
+          type: string
+        uploaderId:
+          type: string
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+        fileHash:
+          type: string
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    DocumentCreateInput:
+      type: object
+      required:
+        - teamId
+        - uploaderId
+        - fileUrl
+        - fileName
+        - fileType
+        - fileSize
+        - fileHash
+      properties:
+        teamId:
+          type: string
+        uploaderId:
+          type: string
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+        fileHash:
+          type: string
+        description:
+          type: string
+
+    DocumentResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Document"
+        message:
+          type: string
+
+    DocumentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+        message:
+          type: string
+
+    DocumentDownloadResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+            fileName:
+              type: string
+            fileUrl:
+              type: string
+            downloadStatus:
+              type: string
+        message:
+          type: string
+
+    LogbookEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        teamId:
+          type: string
+        authorId:
+          type: string
+        sprintNumber:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        description:
+          type: string
+        blockers:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    LogbookCreateInput:
+      type: object
+      required:
+        - teamId
+        - authorId
+        - status
+        - description
+      properties:
+        teamId:
+          type: string
+        authorId:
+          type: string
+        sprintNumber:
+          type: integer
+        status:
+          type: string
+          enum: [in_progress, blocked, completed]
+        description:
+          type: string
+        blockers:
+          type: string
+
+    LogbookResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/LogbookEntry"
+        message:
+          type: string
+
+    LogbookListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogbookEntry"
+        message:
+          type: string
+
+    Assessment:
+      type: object
+      properties:
+        id:
+          type: string
+        teamId:
+          type: string
+        graderId:
+          type: string
+        scoreArchitecture:
+          type: number
+          nullable: true
+        scoreImplementation:
+          type: number
+          nullable: true
+        scoreDocumentation:
+          type: number
+          nullable: true
+        scorePresentation:
+          type: number
+          nullable: true
+        finalScore:
+          type: number
+        notes:
+          type: string
+          nullable: true
+        walletAddress:
+          type: string
+          nullable: true
+        isLocked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    AssessmentCreateInput:
+      type: object
+      required:
+        - teamId
+        - graderId
+        - finalScore
+      properties:
+        teamId:
+          type: string
+        graderId:
+          type: string
+        scoreArchitecture:
+          type: number
+        scoreImplementation:
+          type: number
+        scoreDocumentation:
+          type: number
+        scorePresentation:
+          type: number
+        finalScore:
+          type: number
+        notes:
+          type: string
+        walletAddress:
+          type: string
+
+    AssessmentResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Assessment"
+        message:
+          type: string
+
+    AssessmentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Assessment"
+        message:
+          type: string
+
+    AssessmentLockResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            assessment:
+              $ref: "#/components/schemas/Assessment"
+            event:
+              type: object
+            nft:
+              $ref: "#/components/schemas/NftRecord"
+        message:
+          type: string
+
+    NftRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        assessmentId:
+          type: string
+        teamId:
+          type: string
+        walletAddress:
+          type: string
+        contractAddress:
+          type: string
+        tokenId:
+          type: string
+        txHash:
+          type: string
+        network:
+          type: string
+        metadataUri:
+          type: string
+        mintedAt:
+          type: string
+          format: date-time
+        verifyStatus:
+          type: string
+
+    NftListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NftRecord"
+        message:
+          type: string
+
+    NftVerifyResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+            assessmentId:
+              type: string
+            teamId:
+              type: string
+            network:
+              type: string
+            txHash:
+              type: string
+            verified:
+              type: boolean
+            status:
+              type: string
+        message:
+          type: string
