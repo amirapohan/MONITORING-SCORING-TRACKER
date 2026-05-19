@@ -71,6 +71,21 @@ describe("MVP auth flow", () => {
     });
   });
 
+  it("returns skill and subSkill enum options", async () => {
+    const response = await request(app).get("/api/auth/skills/options");
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.skills).toEqual(
+      expect.arrayContaining(["FRONTEND_DEVELOPMENT", "BACKEND_DEVELOPMENT"]),
+    );
+    expect(response.body.data.subSkills).toEqual(
+      expect.arrayContaining(["REACT", "NODEJS", "SUPABASE"]),
+    );
+    expect(response.body.data.subSkillsBySkill.FRONTEND_DEVELOPMENT).toEqual(
+      expect.arrayContaining(["HTML", "CSS", "REACT"]),
+    );
+  });
+
   it("registers, logs in, refreshes, reads profile, updates profile, validates token, and logs out", async () => {
     const registerResponse = await request(app)
       .post("/api/auth/register")
@@ -79,6 +94,8 @@ describe("MVP auth flow", () => {
         email: testUser.email,
         password: testUser.password,
         role: "talent",
+        skills: ["FRONTEND_DEVELOPMENT", "BACKEND_DEVELOPMENT"],
+        subSkills: ["REACT", "TYPESCRIPT", "NODEJS", "SUPABASE"],
       });
 
     expect(registerResponse.status).toBe(201);
@@ -87,6 +104,8 @@ describe("MVP auth flow", () => {
       email: testUser.email,
       role: "talent",
       isActive: true,
+      skills: ["FRONTEND_DEVELOPMENT", "BACKEND_DEVELOPMENT"],
+      subSkills: ["REACT", "TYPESCRIPT", "NODEJS", "SUPABASE"],
     });
     expect(registerResponse.body.data.user.password).toBeUndefined();
 
@@ -113,10 +132,20 @@ describe("MVP auth flow", () => {
     const updateProfileResponse = await request(app)
       .put("/api/auth/profile")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: testUser.updatedName });
+      .send({
+        name: testUser.updatedName,
+        skills: ["FULLSTACK_DEVELOPMENT"],
+        subSkills: ["NEXTJS", "PRISMA", "POSTGRESQL"],
+      });
 
     expect(updateProfileResponse.status).toBe(200);
     expect(updateProfileResponse.body.data.user.name).toBe(testUser.updatedName);
+    expect(updateProfileResponse.body.data.user.skills).toEqual(["FULLSTACK_DEVELOPMENT"]);
+    expect(updateProfileResponse.body.data.user.subSkills).toEqual([
+      "NEXTJS",
+      "PRISMA",
+      "POSTGRESQL",
+    ]);
 
     const refreshResponse = await request(app)
       .post("/api/auth/refresh")
@@ -611,6 +640,31 @@ describe("Input validation", () => {
       await prisma.user.deleteMany({ where: { email } });
     }
   });
+
+  it("rejects profile update with unsupported skill enum value", async () => {
+    const email = `validation.skill.${uniqueId}@example.com`;
+
+    try {
+      await request(app)
+        .post("/api/auth/register")
+        .send({ name: "Skill User", email, password: "Password123!", role: "talent" });
+
+      const loginRes = await request(app)
+        .post("/api/auth/login")
+        .send({ email, password: "Password123!" });
+
+      const { accessToken } = loginRes.body.data;
+
+      const res = await request(app)
+        .put("/api/auth/profile")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({ skills: ["NOT_REAL_SKILL"] });
+
+      expect(res.status).toBe(422);
+    } finally {
+      await prisma.user.deleteMany({ where: { email } });
+    }
+  });
 });
 
 describe("Business logic edge cases", () => {
@@ -847,4 +901,3 @@ describe("Audit logging", () => {
     expect(logs.every((l) => l.action === "LOGIN_SUCCESS")).toBe(true);
   });
 });
-

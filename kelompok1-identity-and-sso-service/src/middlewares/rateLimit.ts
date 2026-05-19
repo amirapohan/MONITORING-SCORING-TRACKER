@@ -2,11 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 
 import { redisClient } from "../config/redis";
 
-export const createRateLimiter = (options: {
-  windowMs: number;
-  max: number;
-  keyPrefix: string;
-}) =>
+export const createRateLimiter =
+  (options: { windowMs: number; max: number; keyPrefix: string }) =>
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (process.env.NODE_ENV === "test") {
       return next();
@@ -32,7 +29,9 @@ export const createRateLimiter = (options: {
       }
     } catch {
       // Redis unavailable: fail-open, let the request through
-      console.error(`[rateLimit] Redis unavailable for key ${options.keyPrefix}, skipping`);
+      console.error(
+        `[rateLimit] Redis unavailable for key ${options.keyPrefix}, skipping`,
+      );
     }
 
     next();

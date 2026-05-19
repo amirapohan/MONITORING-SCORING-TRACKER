@@ -6,6 +6,7 @@ import authenticate from "../middlewares/authenticate";
 import authorize from "../middlewares/authorize";
 import { createRateLimiter } from "../middlewares/rateLimit";
 import { validate } from "../middlewares/validate";
+import { SKILL_VALUES, SUB_SKILL_VALUES } from "../types/skills";
 
 const loginLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: "login" });
 const registerLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5, keyPrefix: "register" });
@@ -18,6 +19,22 @@ const baseRegisterValidation = [
   body("password")
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters"),
+  body("skills")
+    .optional()
+    .isArray()
+    .withMessage("Skills must be an array"),
+  body("skills.*")
+    .optional()
+    .isIn(SKILL_VALUES)
+    .withMessage("Each skill must be a supported Skill enum value"),
+  body("subSkills")
+    .optional()
+    .isArray()
+    .withMessage("SubSkills must be an array"),
+  body("subSkills.*")
+    .optional()
+    .isIn(SUB_SKILL_VALUES)
+    .withMessage("Each subSkill must be a supported SubSkill enum value"),
 ];
 
 const publicRegisterValidation = [
@@ -47,9 +64,26 @@ const updateProfileValidation = [
     .optional()
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters"),
+  body("skills")
+    .optional()
+    .isArray()
+    .withMessage("Skills must be an array"),
+  body("skills.*")
+    .optional()
+    .isIn(SKILL_VALUES)
+    .withMessage("Each skill must be a supported Skill enum value"),
+  body("subSkills")
+    .optional()
+    .isArray()
+    .withMessage("SubSkills must be an array"),
+  body("subSkills.*")
+    .optional()
+    .isIn(SUB_SKILL_VALUES)
+    .withMessage("Each subSkill must be a supported SubSkill enum value"),
 ];
 
 // Public
+router.get("/skills/options", authController.getSkillOptions);
 router.post("/register", registerLimiter, publicRegisterValidation, validate, authController.register);
 router.post("/login", loginLimiter, loginValidation, validate, authController.login);
 router.post("/refresh", authController.refreshToken);

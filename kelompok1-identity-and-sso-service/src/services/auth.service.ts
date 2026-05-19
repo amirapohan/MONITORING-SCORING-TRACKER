@@ -1,4 +1,4 @@
-import type { TalentProjectCompletion } from "@prisma/client";
+import type { Prisma, TalentProjectCompletion } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 import jwt from "jsonwebtoken";
@@ -15,6 +15,11 @@ import {
   UnauthorizedError,
 } from "../types/errors";
 import {
+  uniqueSkillValues,
+  type SkillValue,
+  type SubSkillValue,
+} from "../types/skills";
+import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
@@ -28,6 +33,8 @@ type RegisterInput = {
   email: string;
   password: string;
   role?: AppRole;
+  skills?: SkillValue[];
+  subSkills?: SubSkillValue[];
 };
 
 type LoginInput = {
@@ -38,6 +45,8 @@ type LoginInput = {
 type UpdateProfileInput = {
   name?: string;
   password?: string;
+  skills?: SkillValue[];
+  subSkills?: SubSkillValue[];
 };
 
 type ProfileResponse = SafeUser & {
@@ -59,6 +68,8 @@ export const authService = {
       email: input.email,
       password: hashedPassword,
       role: input.role ?? "talent",
+      skills: uniqueSkillValues(input.skills),
+      subSkills: uniqueSkillValues(input.subSkills),
     });
 
     await log({ action: "REGISTER", userId: user.id, ...ctx, metadata: { role: user.role } });
@@ -219,12 +230,18 @@ export const authService = {
       throw new NotFoundError("User not found");
     }
 
-    const data: { name?: string; password?: string } = {};
+    const data: Prisma.UserUpdateInput = {};
     if (input.name) {
       data.name = input.name;
     }
     if (input.password) {
       data.password = await bcrypt.hash(input.password, 12);
+    }
+    if (input.skills) {
+      data.skills = uniqueSkillValues(input.skills);
+    }
+    if (input.subSkills) {
+      data.subSkills = uniqueSkillValues(input.subSkills);
     }
 
     const updated = await userRepository.update(userId, data);

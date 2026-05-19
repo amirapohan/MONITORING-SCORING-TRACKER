@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { authService } from "../services/auth.service";
+import { skillOptions } from "../types/skills";
 
 const ctx = (req: Request) => ({
   ip: req.ip,
@@ -8,6 +9,14 @@ const ctx = (req: Request) => ({
 });
 
 export const authController = {
+  async getSkillOptions(_req: Request, res: Response) {
+    return res.status(200).json({
+      success: true,
+      message: "Skill options retrieved successfully",
+      data: skillOptions,
+    });
+  },
+
   async register(req: Request, res: Response, next: NextFunction) {
     try {
       const user = await authService.register(req.body, ctx(req));
