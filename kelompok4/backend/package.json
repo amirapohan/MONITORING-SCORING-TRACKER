@@ -24,6 +24,7 @@
     "amqplib": "^0.10.4",
     "express": "^5.2.1",
     "ioredis": "^5.10.1",
+    "minio": "^8.0.7",
     "multer": "^2.0.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",

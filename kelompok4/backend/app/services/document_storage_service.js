@@ -1,10 +1,10 @@
 const crypto = require("crypto");
 const { validationError } = require("../core/api_error");
 const {
-  getSupabaseBucketName,
-  getSupabaseServiceRoleKey,
-  getSupabaseUrl,
-} = require("../core/supabase");
+  getMinioClient,
+  getMinioBucketName,
+  getMinioPublicUrl,
+} = require("../core/minio");
 
 function createSafeFileName(fileName) {
   return fileName
@@ -19,31 +19,21 @@ function buildStoragePath(folderName, ownerId, fileName) {
   return `${folderName}/${ownerId}/${uniquePrefix}-${createSafeFileName(fileName)}`;
 }
 
-async function uploadFileToSupabase({ storagePath, file }) {
-  const supabaseUrl = getSupabaseUrl();
-  const serviceRoleKey = getSupabaseServiceRoleKey();
-  const bucketName = getSupabaseBucketName();
+// URL permanen yang disimpan ke DB. Service lain di tailnet mengaksesnya
+// langsung lewat MagicDNS Tailscale (bucket ber-policy public-read).
+function buildPublicFileUrl(storagePath) {
+  return `${getMinioPublicUrl()}/${getMinioBucketName()}/${storagePath}`;
+}
 
-  const uploadResponse = await fetch(
-    `${supabaseUrl}/storage/v1/object/${bucketName}/${storagePath}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-        "Content-Type": file.mimetype,
-        "x-upsert": "false",
-      },
-      body: file.buffer,
-    },
-  );
+async function uploadFileToMinio({ storagePath, file }) {
+  const client = getMinioClient();
+  const bucketName = getMinioBucketName();
 
-  if (!uploadResponse.ok) {
-    const uploadError = await uploadResponse.text();
-    throw new Error(`Failed to upload file to Supabase Storage: ${uploadError}`);
-  }
+  await client.putObject(bucketName, storagePath, file.buffer, file.size, {
+    "Content-Type": file.mimetype,
+  });
 
-  return `${supabaseUrl}/storage/v1/object/public/${bucketName}/${storagePath}`;
+  return buildPublicFileUrl(storagePath);
 }
 
 async function uploadDocumentFile({ teamId, file }) {
@@ -52,7 +42,7 @@ async function uploadDocumentFile({ teamId, file }) {
   }
 
   const storagePath = buildStoragePath("documents", teamId, file.originalname);
-  const publicUrl = await uploadFileToSupabase({ storagePath, file });
+  const publicUrl = await uploadFileToMinio({ storagePath, file });
 
   return {
     fileUrl: publicUrl,
@@ -69,7 +59,7 @@ async function uploadSubmissionProofFile({ milestoneId, file }) {
   }
 
   const storagePath = buildStoragePath("milestone-submissions", milestoneId, file.originalname);
-  const publicUrl = await uploadFileToSupabase({ storagePath, file });
+  const publicUrl = await uploadFileToMinio({ storagePath, file });
 
   return {
     fileUrl: publicUrl,
@@ -82,17 +72,10 @@ async function removeDocumentFile(storagePath) {
     return;
   }
 
-  const supabaseUrl = getSupabaseUrl();
-  const serviceRoleKey = getSupabaseServiceRoleKey();
-  const bucketName = getSupabaseBucketName();
+  const client = getMinioClient();
+  const bucketName = getMinioBucketName();
 
-  await fetch(`${supabaseUrl}/storage/v1/object/${bucketName}/${storagePath}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${serviceRoleKey}`,
-      apikey: serviceRoleKey,
-    },
-  });
+  await client.removeObject(bucketName, storagePath);
 }
 
 module.exports = {

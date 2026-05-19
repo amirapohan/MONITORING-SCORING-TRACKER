@@ -2,6 +2,7 @@ const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./app/core/swagger");
 const apiRoutes = require("./app/presentation/routes");
+const { ensureBucketReady } = require("./app/core/minio");
 
 const app = express();
 // Default 8080 supaya cocok dengan gateway & compose integrasi (nexus).
@@ -23,4 +24,12 @@ app.listen(port, HOST, () => {
   console.log(
     `📚 Dokumentasi Swagger tersedia di http://${HOST}:${port}/api-docs`,
   );
+
+  // Best-effort: pastikan bucket MinIO ada + policy public-read terpasang.
+  // Tidak men-crash server bila MinIO belum siap (mis. masih booting).
+  ensureBucketReady()
+    .then(() => console.log("🗄️  MinIO bucket siap"))
+    .catch((error) =>
+      console.error("⚠️  Gagal inisialisasi MinIO bucket:", error.message),
+    );
 });
