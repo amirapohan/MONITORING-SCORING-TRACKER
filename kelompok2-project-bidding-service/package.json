@@ -8,6 +8,17 @@
     "dev": "nodemon src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "type": "commonjs",
+  "dependencies": {
+    "amqplib": "^2.0.1",
+    "axios": "^1.16.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/agaggigit/microservice-project-bidding.git"
@@ -15,18 +26,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/agaggigit/microservice-project-bidding/issues"
   },
-  "homepage": "https://github.com/agaggigit/microservice-project-bidding#readme",
-  "devDependencies": {
-    "nodemon": "^3.1.14"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "pg": "^8.11.3"
-  }
+  "homepage": "https://github.com/agaggigit/microservice-project-bidding#readme"
 }
-
