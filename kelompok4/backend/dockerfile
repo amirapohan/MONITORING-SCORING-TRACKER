@@ -22,4 +22,4 @@ RUN chmod +x docker-entrypoint.sh
 EXPOSE 8080
 
 # migrasi skema DB otomatis -> lalu jalankan server
-CMD ["./docker-entrypoint.sh"]
+CMD ["sh", "docker-entrypoint.sh"]

@@ -70,7 +70,7 @@ services:
       POSTGRES_USER: ${AUDIT_DB_USER:-kel4}
       POSTGRES_PASSWORD: ${AUDIT_DB_PASS:-kel4}
       POSTGRES_DB: ${AUDIT_DB_NAME:-kel4}
-    ports: ["5434:5432"]
+    ports: ["5436:5432"]
     volumes: ["audit_data:/var/lib/postgresql/data"]
     networks: [nexus-net]
     healthcheck:
