@@ -63,8 +63,8 @@ export const googleAuthService = {
       throw new UnauthorizedError("Invalid credentials or account is inactive");
     }
 
-    const accessToken_gen = (user: { id: string; email: string; role: AppRole }) =>
-      generateAccessToken({ id: user.id, email: user.email, role: user.role });
+    const accessToken_gen = (user: { id: string; name: string; email: string; role: AppRole }) =>
+      generateAccessToken({ id: user.id, name: user.name, email: user.email, role: user.role });
     const refreshTokenValue = generateRefreshToken({ id: existing?.id ?? "pending" });
 
     // One transaction: all writes + outbox insert

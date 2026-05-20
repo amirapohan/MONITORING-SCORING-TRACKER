@@ -131,6 +131,7 @@ export const authService = {
 
     const accessToken = generateAccessToken({
       id: user.id,
+      name: user.name,
       email: user.email,
       role: user.role,
     });
@@ -178,6 +179,7 @@ export const authService = {
 
     const accessToken = generateAccessToken({
       id: user.id,
+      name: user.name,
       email: user.email,
       role: user.role,
     });
