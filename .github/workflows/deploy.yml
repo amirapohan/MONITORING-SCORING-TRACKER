@@ -138,12 +138,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login Docker Hub (untuk private images, kalau ada)
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Pull & restart changed services
         env:
           FORCE_ALL: ${{ needs.detect.outputs.force_all }}
