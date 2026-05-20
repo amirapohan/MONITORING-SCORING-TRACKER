@@ -30,12 +30,12 @@ class NegotiatingController {
       // PERUBAHAN: Tentukan role otomatis dan RBAC Ownership Check
       let role_;
       if (userType === 'mitra') {
-        if (project.mitra_id !== userId) {
+        if (String(project.mitra_id) !== String(userId)) {
           return responseError(res, 'Unauthorized: Ini bukan proyek Anda', 403, 'FORBIDDEN');
         }
         role_ = 'Mitra';
       } else if (userType === 'talent') {
-        if (bid.kelompok_id !== userId) {
+        if (String(bid.kelompok_id) !== String(userId)) {
           return responseError(res, 'Unauthorized: Ini bukan bid kelompok Anda', 403, 'FORBIDDEN');
         }
         role_ = 'Kelompok';
@@ -190,7 +190,7 @@ class NegotiatingController {
       // --- TANTANGAN 1: RBAC & Mencegah "Jeruk Makan Jeruk" ---
       if (userType === 'mitra') {
         // Cek kepemilikan proyek
-        if (project.mitra_id !== userId) {
+        if (String(project.mitra_id) !== String(userId)) {
           return responseError(res, 'Unauthorized untuk proyek ini', 403, 'FORBIDDEN');
         }
         // Pastikan Mitra hanya menjawab tawaran dari Kelompok
@@ -199,7 +199,7 @@ class NegotiatingController {
         }
       } else if (userType === 'talent') {
         // Cek kepemilikan bid
-        if (bid.kelompok_id !== userId) {
+        if (String(bid.kelompok_id) !== String(userId)) {
           return responseError(res, 'Unauthorized untuk bid ini', 403, 'FORBIDDEN');
         }
         // Pastikan Talent hanya menjawab tawaran dari Mitra

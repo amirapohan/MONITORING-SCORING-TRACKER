@@ -11,8 +11,59 @@
  * - X-User-Type: Tipe user ('talent' atau 'mitra')
  */
 
-const authMiddleware = (req, res, next) => {
+const authInternalUrl = () => (
+  process.env.AUTH_INTERNAL_URL ||
+  process.env.AUTH_SERVICE_URL ||
+  'http://svc-auth:8080'
+).replace(/\/+$/, '');
+
+const internalApiKey = () => process.env.INTERNAL_API_KEY || '';
+
+const mapRoleToUserType = (role) => {
+  if (role === 'talent' || role === 'student') return 'talent';
+  if (role === 'client' || role === 'mitra') return 'mitra';
+  return role;
+};
+
+const verifyBearerToken = async (token) => {
+  const response = await fetch(`${authInternalUrl()}/internal/validate-token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-api-key': internalApiKey(),
+      Accept: 'application/json'
+    },
+    body: JSON.stringify({ token })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Identity service rejected token with ${response.status}`);
+  }
+
+  const body = await response.json().catch(() => ({}));
+  const payload = (body && body.data && body.data.user) || body.user || body;
+  if (!payload || !payload.id) {
+    throw new Error('Identity service returned invalid user payload');
+  }
+
+  return {
+    id: String(payload.id),
+    type: mapRoleToUserType(payload.role),
+    role: payload.role,
+    email: payload.email,
+    name: payload.name
+  };
+};
+
+const authMiddleware = async (req, res, next) => {
   try {
+    const authorization = req.headers.authorization || '';
+    const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
+    if (bearerMatch) {
+      req.user = await verifyBearerToken(bearerMatch[1].trim());
+      return next();
+    }
+
     // Extract dari header (case-insensitive di Express)
     const userId = req.headers['x-user-id'];
     const userType = req.headers['x-user-type'];
@@ -39,7 +90,7 @@ const authMiddleware = (req, res, next) => {
     // Attach user info ke request object
     // Ini bisa diakses di controller dengan: req.user.id, req.user.type
     req.user = {
-      id: userId,
+      id: String(userId),
       type: userType.toLowerCase()
     };
 
@@ -48,7 +99,7 @@ const authMiddleware = (req, res, next) => {
 
   } catch (error) {
     console.error('Auth middleware error:', error);
-    return res.status(500).json({
+    return res.status(401).json({
       success: false,
       message: 'Authentication error',
       code: 'AUTH_ERROR',
