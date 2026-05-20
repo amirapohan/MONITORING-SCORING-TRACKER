@@ -1,10 +1,13 @@
 # CI/CD Deployment Guide
 
-Alur kerja otomatis: **push ke GitHub → build image Docker → deploy container di PC dosen**.
+Alur kerja otomatis: **push ke GitHub → build image Docker → self-hosted runner di PC dosen tarik & jalankan**.
 
 ```
-  developer push ──► GitHub Actions ──► Docker Hub ──► (SSH/Tailscale) ──► PC dosen
-                     (build + push)                                       docker compose pull && up -d
+  developer push ──► GitHub Actions (ubuntu-latest) ──► Docker Hub
+                                                            │
+                                                            ▼
+                                            self-hosted runner di PC dosen
+                                            docker compose pull && up -d
 ```
 
 Workflow: `.github/workflows/deploy.yml`
@@ -16,18 +19,18 @@ Compose deploy: `kelompok4/nexus-integration/docker-compose.deploy.yml`
 
 Workflow jalan otomatis kalau push ke branch `main` atau `integration` dan ada file berubah di salah satu folder berikut:
 
-| Folder berubah                                          | Service yang dibuild | Image                          |
-| ------------------------------------------------------- | -------------------- | ------------------------------ |
-| `kelompok1-identity-and-sso-service/**`                 | svc-auth             | `scientivan/nexus-svc-auth`    |
-| `kelompok2-project-bidding-service/**`                  | svc-bidding          | `scientivan/nexus-svc-bidding` |
-| `kelompok3-team-matching-service/**`                    | svc-match            | `scientivan/nexus-svc-match`   |
-| `kelompok4/backend/**`                                  | svc-audit            | `scientivan/nexus-svc-audit`   |
-| `kelompok5-notification-service/**`                     | svc-notify           | `scientivan/nexus-svc-notify`  |
-| `kelompok4/nexus-integration/gateway.{conf,Dockerfile}` | gateway              | `scientivan/nexus-gateway`     |
+| Folder berubah | Service yang dibuild | Image |
+| --- | --- | --- |
+| `kelompok1-identity-and-sso-service/**` | svc-auth | `scientivan/nexus-svc-auth` |
+| `kelompok2-project-bidding-service/**` | svc-bidding | `scientivan/nexus-svc-bidding` |
+| `kelompok3-team-matching-service/**` | svc-match | `scientivan/nexus-svc-match` |
+| `kelompok4/backend/**` | svc-audit | `scientivan/nexus-svc-audit` |
+| `kelompok5-notification-service/**` | svc-notify | `scientivan/nexus-svc-notify` |
+| `kelompok4/nexus-integration/gateway.{conf,Dockerfile}` | gateway | `scientivan/nexus-gateway` |
 
 Service yang **tidak berubah** akan di-skip — image lama di PC dosen tetap jalan.
 
-Mau build ulang semua manual? Buka tab **Actions** di GitHub → "Build & Deploy Nexus Services" → **Run workflow** → centang `force_all`.
+Build manual semua: tab **Actions** → "Build & Deploy Nexus Services" → **Run workflow** → centang `force_all`.
 
 ---
 
@@ -37,61 +40,92 @@ Mau build ulang semua manual? Buka tab **Actions** di GitHub → "Build & Deploy
 
 `Settings → Secrets and variables → Actions → New repository secret`:
 
-| Secret               | Isi                                                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `TS_OAUTH_CLIENT_ID` | OAuth client ID dari Tailscale (opsional — kalau PC dosen tidak punya IP publik)                                      |
-| `SERVER_SSH_KEY`     | Private key SSH (isi penuh, termasuk header `-----BEGIN ...`) yang public key-nya sudah di-`authorized_keys` PC dosen |
-
-|
-| `SERVER_HOST` | Hostname/IP PC dosen (mis. Tailscale MagicDNS: `pc-dosen.tailxxxx.ts.net`) |
+| Secret | Isi |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | `scientivan` |
 | `DOCKERHUB_TOKEN` | Personal Access Token Docker Hub (scope **Read & Write**) |
-| `SERVER_USER` | Username SSH di PC dosen (mis. `aidiel`) |
-`DOCKERHUB_USERNAME` | `scientivan` |
-| `TS_OAUTH_SECRET` | OAuth secret dari Tailscale |
 
-> **Tailscale tidak dipakai?** Hapus step `Connect to Tailnet` di `.github/workflows/deploy.yml` kalau PC dosen sudah bisa diakses SSH langsung.
+> Itu saja. Tidak butuh SSH key atau Tailscale secrets — deploy job jalan langsung di PC dosen via self-hosted runner. Secret lama (`SERVER_*`, `TS_OAUTH_*`) boleh dihapus.
 
-### 2. PC dosen (sekali saja)
+### 2. Self-hosted runner di PC dosen
 
-Pasang prasyarat:
+Buka repo GitHub → **Settings → Actions → Runners → New self-hosted runner** → pilih **Linux x64**. GitHub akan menampilkan command persis seperti ini (token-nya beda tiap kali generate, salin dari halaman GitHub):
 
 ```bash
-# Docker + compose plugin (Ubuntu)
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER     # logout/login lagi
+# Di PC dosen, sebagai user map:
+mkdir -p ~/actions-runner && cd ~/actions-runner
+curl -o actions-runner-linux-x64.tar.gz -L https://github.com/actions/runner/releases/download/v2.XXX.X/actions-runner-linux-x64-2.XXX.X.tar.gz
+tar xzf actions-runner-linux-x64.tar.gz
 
-# Tailscale (kalau pakai)
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+# Configure — PENTING: saat prompt "Enter any additional labels", ketik: nexus-deploy
+./config.sh --url https://github.com/scientivan/monitoring-scoring-tracker --token <TOKEN-DARI-GITHUB>
+
+# Jalankan sebagai service (auto-start saat reboot)
+sudo ./svc.sh install map
+sudo ./svc.sh start
 ```
 
-Buat folder deploy + `.env`:
+Verifikasi: di GitHub `Settings → Actions → Runners`, runner-mu harus muncul status **Idle** (hijau) dengan label `nexus-deploy`.
+
+### 3. Prasyarat di PC dosen
 
 ```bash
-mkdir -p ~/nexus && cd ~/nexus
-# Salin .env.example dari repo, isi nilainya
-curl -O https://raw.githubusercontent.com/scientivan/monitoring-scoring-tracker/main/kelompok4/nexus-integration/.env.deploy.example
-mv .env.deploy.example .env
-nano .env
+docker --version              # docker terpasang
+docker compose version        # plugin v2 terpasang
+groups map | grep docker      # user map sudah di group docker
 ```
 
-Tambah public key milik GitHub runner ke `~/.ssh/authorized_keys` (private key-nya disimpan sebagai `SERVER_SSH_KEY` di GitHub Secrets).
+Kalau group docker belum ada: `sudo usermod -aG docker map && newgrp docker`.
 
-### 3. Boot pertama kali
+### 4. File `.env` di PC dosen
 
-Trigger sekali workflow dengan `force_all=true` (dari tab Actions GitHub). Setelah image semua nongol di Docker Hub dan compose file ter-scp ke `~/nexus/`, semua container akan up.
+```bash
+mkdir -p /home/map/nexus
+nano /home/map/nexus/.env
+```
+
+Path persis `/home/map/nexus/.env` — workflow membaca dari path itu (lihat env `ENV_FILE` di `.github/workflows/deploy.yml`).
+
+Isi minimum (sisanya bisa default):
+
+```env
+INTERNAL_API_KEY=<openssl rand -hex 32>
+JWT_SECRET=<openssl rand -hex 32>
+RABBIT_USER=guest
+RABBIT_PASS=guest
+
+AUTH_DB_USER=auth
+AUTH_DB_PASS=auth
+AUTH_DB_NAME=auth
+
+BIDDING_DB_USER=bidding
+BIDDING_DB_PASS=bidding
+BIDDING_DB_NAME=bidding
+
+MATCH_DB_USER=match
+MATCH_DB_PASS=match
+MATCH_DB_NAME=match
+
+AUDIT_DB_USER=kel4
+AUDIT_DB_PASS=kel4
+AUDIT_DB_NAME=kel4
+
+GMAIL_USER=
+GMAIL_PASS=
+```
+
+### 5. Boot pertama kali
+
+Trigger workflow manual dengan `force_all=true` (tab Actions → Run workflow). Semua image ke-pull dan container start.
 
 **Seed database** (sekali saja — kelompok2 & 3 tidak punya migrate-on-start):
 
 ```bash
-cd ~/nexus
 # kelompok2
-curl -O https://raw.githubusercontent.com/scientivan/monitoring-scoring-tracker/main/kelompok2-project-bidding-service/database_schema.sql
-docker exec -i DB-bidding psql -U bidding bidding < database_schema.sql
+docker exec -i DB-bidding psql -U bidding bidding < <(curl -s https://raw.githubusercontent.com/scientivan/monitoring-scoring-tracker/main/kelompok2-project-bidding-service/database_schema.sql)
 
 # kelompok3
-curl -O https://raw.githubusercontent.com/scientivan/monitoring-scoring-tracker/main/kelompok3-team-matching-service/migrations/001_initial_schema.sql
-docker exec -i DB-match psql -U match match < 001_initial_schema.sql
+docker exec -i DB-match psql -U match match < <(curl -s https://raw.githubusercontent.com/scientivan/monitoring-scoring-tracker/main/kelompok3-team-matching-service/migrations/001_initial_schema.sql)
 ```
 
 Kelompok1 (Prisma) dan Kelompok4 (Prisma) jalan migrate otomatis dari CMD container.
@@ -103,21 +137,20 @@ Kelompok1 (Prisma) dan Kelompok4 (Prisma) jalan migrate otomatis dari CMD contai
 Setelah workflow sukses, di PC dosen:
 
 ```bash
-cd ~/nexus
-docker compose -f docker-compose.deploy.yml ps
+cd ~/actions-runner/_work/monitoring-scoring-tracker/monitoring-scoring-tracker
+docker compose --env-file /home/map/nexus/.env \
+  -f kelompok4/nexus-integration/docker-compose.deploy.yml ps
 # semua harus Up (healthy)
 
 curl http://localhost/api/auth/health      # via gateway
 curl http://localhost:8084/api/v1/health   # langsung ke svc-audit
 ```
 
-Atau buka di browser PC dosen: `http://localhost`.
-
 ---
 
 ## Troubleshooting
 
-- **Workflow gagal di step `Connect to Tailnet`** — verifikasi OAuth client di Tailscale punya scope `auth_keys` + tag `tag:ci` di ACL.
-- **Workflow gagal di step SSH** — uji manual: `ssh -i <private-key> $SERVER_USER@$SERVER_HOST`. Pastikan public key sudah di `authorized_keys`.
-- **Image baru ter-push tapi container tidak update** — cek `docker compose -f docker-compose.deploy.yml pull` di PC dosen. Pastikan `:latest` tag yang ditarik.
-- **Build gagal — Dockerfile tidak ketemu** — perhatikan kelompok4 pakai `dockerfile` (huruf kecil semua), bukan `Dockerfile`. Matrix di workflow sudah handle ini.
+- **Job "Deploy ke PC dosen" stuck "Waiting for runner"** — runner offline. Di PC dosen: `cd ~/actions-runner && sudo ./svc.sh status` → kalau down: `sudo ./svc.sh start`.
+- **Build berhasil tapi deploy gagal `$ENV_FILE belum ada`** — pastikan `/home/map/nexus/.env` ada dan terbaca user `map`.
+- **Container svc-X gagal up** — `docker logs SVC-x`. Biasanya migrate gagal atau env kurang.
+- **Image baru tidak ke-pull** — pastikan `docker login` sukses di runner. Workflow sudah handle ini via `docker/login-action`.

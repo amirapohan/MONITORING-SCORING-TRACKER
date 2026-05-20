@@ -122,73 +122,30 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.svc.name }},mode=max
 
   # ----------------------------------------------------------------
-  # 3. Deploy ke PC dosen via SSH (Tailscale supaya tembus NAT/firewall)
-  #    Hanya jalan kalau minimal 1 build sukses.
+  # 3. Deploy ke PC dosen — pakai self-hosted runner yang dipasang
+  #    langsung di PC dosen. Tidak butuh SSH/Tailscale: runner narik
+  #    job dari GitHub lewat outbound HTTPS, lalu jalankan docker
+  #    compose secara lokal.
   # ----------------------------------------------------------------
   deploy:
     name: Deploy ke PC dosen
     needs: [detect, build]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nexus-deploy]
     if: success() && (needs.detect.outputs.force_all == 'true' || needs.detect.outputs.auth == 'true' || needs.detect.outputs.bidding == 'true' || needs.detect.outputs.match == 'true' || needs.detect.outputs.audit == 'true' || needs.detect.outputs.notify == 'true' || needs.detect.outputs.gateway == 'true')
+    env:
+      ENV_FILE: /home/map/nexus/.env
+      COMPOSE_FILE: kelompok4/nexus-integration/docker-compose.deploy.yml
     steps:
       - uses: actions/checkout@v4
 
-      # Tailscale supaya runner GitHub bisa nyambung ke PC dosen yang
-      # tidak punya IP publik. Set di Tailscale admin → OAuth client +
-      # ACL tag:ci. Skip step ini kalau PC dosen sudah punya IP publik
-      # dan kamu mau pakai SSH langsung.
-      - name: Connect to Tailnet
-        uses: tailscale/github-action@v3
+      - name: Login Docker Hub (untuk private images, kalau ada)
+        uses: docker/login-action@v3
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      # SSH/SCP dijalankan langsung di shell runner (bukan via Docker-based
-      # action) supaya bisa pakai interface tailscale0 di runner host.
-      # appleboy/scp-action jalan di dalam container terpisah yang tidak
-      # melihat route Tailscale, sehingga selalu i/o timeout.
-      - name: Debug — tailnet & connectivity
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-        run: |
-          echo "=== tailscale status ==="
-          tailscale status || true
-          echo
-          echo "=== tailscale ip ==="
-          tailscale ip -4 || true
-          echo
-          echo "=== ping SERVER_HOST (5x) ==="
-          tailscale ping --c 5 "$SERVER_HOST" || true
-          echo
-          echo "=== nc test port 22 ==="
-          timeout 10 bash -c "</dev/tcp/$SERVER_HOST/22" && echo "PORT 22 REACHABLE" || echo "PORT 22 BLOCKED"
-
-      - name: Setup SSH key & known_hosts
-        env:
-          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Copy compose file to server
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-        run: |
-          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'mkdir -p ~/nexus'
-          scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no \
-            kelompok4/nexus-integration/docker-compose.deploy.yml \
-            "$SERVER_USER@$SERVER_HOST:~/nexus/docker-compose.deploy.yml"
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Pull & restart changed services
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
           FORCE_ALL: ${{ needs.detect.outputs.force_all }}
           CH_AUTH: ${{ needs.detect.outputs.auth }}
           CH_BIDDING: ${{ needs.detect.outputs.bidding }}
@@ -197,12 +154,7 @@ jobs:
           CH_NOTIFY: ${{ needs.detect.outputs.notify }}
           CH_GATEWAY: ${{ needs.detect.outputs.gateway }}
         run: |
-          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no \
-            "$SERVER_USER@$SERVER_HOST" \
-            "FORCE_ALL='$FORCE_ALL' CH_AUTH='$CH_AUTH' CH_BIDDING='$CH_BIDDING' CH_MATCH='$CH_MATCH' CH_AUDIT='$CH_AUDIT' CH_NOTIFY='$CH_NOTIFY' CH_GATEWAY='$CH_GATEWAY' bash -s" <<'REMOTE'
-          set -e
-          cd ~/nexus
-          test -f .env || { echo "ERROR: ~/nexus/.env belum ada di PC dosen"; exit 1; }
+          test -f "$ENV_FILE" || { echo "ERROR: $ENV_FILE belum ada"; exit 1; }
 
           services=""
           if [ "$FORCE_ALL" = "true" ]; then
@@ -218,8 +170,7 @@ jobs:
           services=$(echo "$services" | xargs)
           echo "Deploying: $services"
 
-          docker compose -f docker-compose.deploy.yml pull $services
-          docker compose -f docker-compose.deploy.yml up -d --no-deps $services
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull $services
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-deps $services
           docker image prune -f
-          docker compose -f docker-compose.deploy.yml ps
-          REMOTE
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
