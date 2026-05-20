@@ -148,6 +148,22 @@ jobs:
       # action) supaya bisa pakai interface tailscale0 di runner host.
       # appleboy/scp-action jalan di dalam container terpisah yang tidak
       # melihat route Tailscale, sehingga selalu i/o timeout.
+      - name: Debug — tailnet & connectivity
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          echo "=== tailscale status ==="
+          tailscale status || true
+          echo
+          echo "=== tailscale ip ==="
+          tailscale ip -4 || true
+          echo
+          echo "=== ping SERVER_HOST (5x) ==="
+          tailscale ping --c 5 "$SERVER_HOST" || true
+          echo
+          echo "=== nc test port 22 ==="
+          timeout 10 bash -c "</dev/tcp/$SERVER_HOST/22" && echo "PORT 22 REACHABLE" || echo "PORT 22 BLOCKED"
+
       - name: Setup SSH key & known_hosts
         env:
           SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
