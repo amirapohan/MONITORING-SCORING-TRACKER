@@ -15,4 +15,8 @@ app.get('/', (req, res) => {
   res.send('Halo ini layanan bidding')
 })
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', service: 'bidding' })
+})
+
 module.exports = app

@@ -131,6 +131,7 @@ class NegotiatingService {
           response_harga,
           response_waktu,
           role_,
+          status,
           created_at
         FROM negosiasi
         WHERE bid_id = $1
