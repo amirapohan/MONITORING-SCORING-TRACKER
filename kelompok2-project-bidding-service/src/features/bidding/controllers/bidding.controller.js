@@ -3,13 +3,22 @@ const biddingService = require('../services/bidding.service');
 class BiddingController {
   async createBid(req, res) {
     try {
-      const { group_id, project_id, priority, document_url, student_id } = req.body;
+      const {
+        group_id,
+        project_id,
+        priority,
+        document_url,
+        student_id,
+        tawaran_harga,
+        tawaran_waktu
+      } = req.body;
+      const resolvedStudentId = student_id || req.user.id;
 
       // Validation: Check required fields
-      if (!group_id || !project_id || !priority || !document_url || !student_id) {
+      if (!group_id || !project_id || !priority || !document_url || !resolvedStudentId || !tawaran_harga || !tawaran_waktu) {
         return res.status(400).json({
           success: false,
-          message: 'Missing required fields: group_id, project_id, priority, document_url, student_id',
+          message: 'Missing required fields: group_id, project_id, priority, document_url, tawaran_harga, tawaran_waktu',
           code: 'VALIDATION_ERROR'
         });
       }
@@ -19,6 +28,24 @@ class BiddingController {
         return res.status(400).json({
           success: false,
           message: 'Priority must be a positive integer',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      const offerAmount = Number(tawaran_harga);
+      if (!Number.isFinite(offerAmount) || offerAmount < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'tawaran_harga must be a positive number',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      const offerDate = new Date(tawaran_waktu);
+      if (Number.isNaN(offerDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: 'tawaran_waktu must be a valid date',
           code: 'VALIDATION_ERROR'
         });
       }
@@ -53,7 +80,7 @@ class BiddingController {
       }
 
       // Check if student/pendaftar exists
-      const student = await biddingService.getStudentDetails(student_id);
+      const student = await biddingService.getStudentDetails(resolvedStudentId);
       if (!student) {
         return res.status(400).json({
           success: false,
@@ -76,9 +103,11 @@ class BiddingController {
       const bidData = {
         projectId: project_id,
         groupId: group_id,
-        studentId: student_id,
+        studentId: resolvedStudentId,
         priority: priority,
-        documentUrl: document_url
+        documentUrl: document_url,
+        tawaranHarga: offerAmount,
+        tawaranWaktu: tawaran_waktu
       };
 
       const newBid = await biddingService.createBid(bidData);
@@ -98,6 +127,8 @@ class BiddingController {
           project_id: newBid.proyek_id,
           status: newBid.status_bid,
           priority: newBid.urutan_prioritas,
+          tawaran_harga: newBid.tawaran_harga,
+          tawaran_waktu: newBid.tawaran_waktu,
           created_at: newBid.waktu_bid
         }
       });

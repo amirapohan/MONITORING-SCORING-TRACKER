@@ -10,7 +10,10 @@ const RABBITMQ_URL =
 const EXCHANGE = process.env.RABBITMQ_EXCHANGE || "tracker.events";
 const EXCHANGE_TYPE = process.env.RABBITMQ_EXCHANGE_TYPE || "topic";
 const QUEUE = process.env.RABBITMQ_QUEUE || "notify.tracker";
-const BINDING = process.env.RABBITMQ_BINDING || "tracker.#";
+const BINDINGS = (process.env.RABBITMQ_BINDINGS || process.env.RABBITMQ_BINDING || "tracker.#,bidding.#")
+  .split(",")
+  .map((binding) => binding.trim())
+  .filter(Boolean);
 const RECONNECT_MS = 5000;
 
 // Map a tracker event to the notify email model when it carries enough info.
@@ -18,12 +21,14 @@ function toEmailEvent(event) {
   const statusMap = {
     submission_approved: "ACCEPTED",
     submission_rejected: "REJECTED",
+    bid_deal_confirmed: "ACCEPTED",
+    bid_status_updated: event.status,
   };
-  const status = statusMap[event.eventType];
+  const status = statusMap[event.eventType] || event.status;
   if (!status || !event.email) return null;
   return {
     user_id: event.studentId || event.user_id,
-    project_id: event.milestoneId || event.project_id,
+    project_id: event.milestoneId || event.project_id || event.deal_id,
     status,
     email: event.email,
   };
@@ -41,11 +46,13 @@ async function connectAndConsume() {
   const channel = await connection.createChannel();
   await channel.assertExchange(EXCHANGE, EXCHANGE_TYPE, { durable: true });
   await channel.assertQueue(QUEUE, { durable: true });
-  await channel.bindQueue(QUEUE, EXCHANGE, BINDING);
+  for (const binding of BINDINGS) {
+    await channel.bindQueue(QUEUE, EXCHANGE, binding);
+  }
   await channel.prefetch(10);
 
   console.log(
-    `[rabbit] notify consuming exchange=${EXCHANGE} queue=${QUEUE} key=${BINDING}`,
+    `[rabbit] notify consuming exchange=${EXCHANGE} queue=${QUEUE} keys=${BINDINGS.join(",")}`,
   );
 
   await channel.consume(QUEUE, async (msg) => {
