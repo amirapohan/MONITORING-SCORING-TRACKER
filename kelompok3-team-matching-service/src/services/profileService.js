@@ -1,27 +1,21 @@
-const { query } = require('../db');
+const profileRepo = require('../repositories/profileRepository');
+const { publishToEventLog } = require('./eventPublisher');
 
 async function getProfileSkills(studentId, period = '2024-1') {
-  const result = await query(
-    `SELECT skills, sdg_topics FROM pool_entries 
-     WHERE student_id = $1 AND period = $2 AND deleted_at IS NULL 
-     ORDER BY created_at DESC LIMIT 1`,
-    [studentId, period]
-  );
-  if (result.rows.length === 0) throw { status: 404, message: 'profile_not_found' };
-  return result.rows[0];
+  return profileRepo.getProfileSkills(studentId, period);
 }
 
 async function updateProfileSkills(studentId, period, skills, sdgTopics) {
-  const result = await query(
-    `UPDATE pool_entries 
-     SET skills = $1, sdg_topics = $2, updated_at = CURRENT_TIMESTAMP 
-     WHERE student_id = $3 AND period = $4 AND deleted_at IS NULL 
-     RETURNING skills, sdg_topics`,
-    [JSON.stringify(skills), sdgTopics, studentId, period]
-  );
-  
-  if (result.rows.length === 0) throw { status: 404, message: 'profile_not_found' };
-  return result.rows[0];
+  const result = await profileRepo.updateProfileSkills(studentId, period, skills, sdgTopics);
+
+  publishToEventLog('PROFILE_SKILLS_UPDATED', {
+    student_id: studentId,
+    period,
+    skills,
+    sdg_topics: sdgTopics,
+  }).catch((err) => console.error('[event-publisher] Failed to publish PROFILE_SKILLS_UPDATED:', err.message));
+
+  return result;
 }
 
 module.exports = { getProfileSkills, updateProfileSkills };

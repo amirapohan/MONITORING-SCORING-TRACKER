@@ -87,13 +87,19 @@ services:
     environment:
       NODE_ENV: development
       PORT: 8080
+      DATABASE_URL: postgresql://${MATCH_DB_USER:-match}:${MATCH_DB_PASS:-match}@db-match:5432/${MATCH_DB_NAME:-match}
       DATABASE_HOST: db-match
       DATABASE_PORT: 5432
       DATABASE_USER: ${MATCH_DB_USER:-match}
       DATABASE_PASSWORD: ${MATCH_DB_PASS:-match}
       DATABASE_NAME: ${MATCH_DB_NAME:-match}
       MOCK_SSO_URL: http://svc-auth:8080
+      MOCK_SSO_SECRET: ${INTERNAL_API_KEY:-nexus-internal-api-key}
       INTERNAL_SERVICE_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@rabbit-main:5672
+      RABBITMQ_EXCHANGE: tracker.events
+      RABBITMQ_EXCHANGE_TYPE: topic
+      RABBITMQ_ROUTING_PREFIX: tracker
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
       interval: 15s

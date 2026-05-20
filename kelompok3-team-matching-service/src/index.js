@@ -1,35 +1,40 @@
-const appName = "team-matching-service";
-const { query, closePool } = require('./db');
+const appName = 'team-matching-service';
 const config = require('./config/database');
+const prisma = require('./core/prisma');
+const rabbitmq = require('./utils/rabbitmq');
 
 async function main() {
   console.log(`${appName} is running.`);
   console.log(`Environment: ${config.app.env}`);
   console.log(`Server port: ${config.app.port}`);
 
-  // Test database connection
   try {
     console.log('\n[DB] Testing connection...');
-    const result = await query('SELECT NOW() as current_time');
+    await prisma.$queryRaw`SELECT NOW()`;
     console.log('[DB] ✓ Connection successful');
-    console.log('[DB] Server time:', result.rows[0].current_time);
   } catch (error) {
     console.error('[DB] ✗ Connection failed:', error.message);
     process.exit(1);
   }
 
+  try {
+    await rabbitmq.connect();
+  } catch (error) {
+    console.warn('[RabbitMQ] Connection failed, events will be unavailable:', error.message);
+  }
+
   console.log('\nApplication ready for development.\n');
-  // Start HTTP server (Express app)
+
   const app = require('./app');
   const server = app.listen(config.app.port, () => {
     console.log(`HTTP server listening on http://localhost:${config.app.port}`);
   });
 
-  // Handle graceful shutdown
   process.on('SIGINT', async () => {
     console.log('\nShutting down gracefully...');
     server.close(() => console.log('HTTP server closed'));
-    await closePool();
+    await rabbitmq.close();
+    await prisma.$disconnect();
     process.exit(0);
   });
 }

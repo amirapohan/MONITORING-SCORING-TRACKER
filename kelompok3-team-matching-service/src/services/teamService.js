@@ -1,454 +1,229 @@
-const { query, getClient } = require('../db');
+const prisma = require('../core/prisma');
+const teamRepo = require('../repositories/teamRepository');
+const poolRepo = require('../repositories/poolRepository');
 const { recalculateTeamScores } = require('./advancedScoringService');
+const { publishToEventLog } = require('./eventPublisher');
 
-async function getPoolEntryByStudentAndPeriod(studentId, period) {
-  const result = await query(
-    `SELECT id, student_id, student_name, program_studi, sdg_topics, availability, notes, status, period
-     FROM pool_entries
-     WHERE student_id = $1 AND period = $2 AND deleted_at IS NULL
-     LIMIT 1`,
-    [studentId, period]
-  );
-
-  return result.rows[0] || null;
-}
+// ── Reads (delegated to repository) ───────────────────────────────────────
 
 async function getTeamById(teamId) {
-  const result = await query(
-    `SELECT id, name, status, generation_method, period, created_by, po_student_id, created_at
-     FROM teams
-     WHERE id = $1
-     LIMIT 1`,
-    [teamId]
-  );
-
-  return result.rows[0] || null;
+  return teamRepo.findTeamById(teamId);
 }
 
 async function getTeamByPoStudentId(poStudentId) {
-  const result = await query(
-    `SELECT id, name, status, generation_method, period, created_by, po_student_id, created_at
-     FROM teams
-     WHERE po_student_id = $1 AND status IN ('forming', 'active')
-     LIMIT 1`,
-    [poStudentId]
-  );
-
-  return result.rows[0] || null;
+  return teamRepo.findTeamByPoStudentId(poStudentId);
 }
 
-async function getActiveTeamByMember(studentId) {
-  const result = await query(
-    `SELECT t.id, t.name, t.status, t.period, t.po_student_id
-     FROM teams t
-     JOIN team_members m ON m.team_id = t.id
-     WHERE m.student_id = $1 AND m.left_at IS NULL AND t.status IN ('forming', 'active')
-     LIMIT 1`,
-    [studentId]
-  );
-
-  return result.rows[0] || null;
+async function getPoolEntryByStudentAndPeriod(studentId, period) {
+  return poolRepo.findEntry(studentId, period);
 }
 
-async function getTeamMemberByStudentId(teamId, studentId) {
-  const result = await query(
-    `SELECT id, team_id, student_id, role_in_team
-     FROM team_members
-     WHERE team_id = $1 AND student_id = $2 AND left_at IS NULL
-     LIMIT 1`,
-    [teamId, studentId]
-  );
-
-  return result.rows[0] || null;
+async function getTeamList() {
+  return teamRepo.getTeamList();
 }
 
-async function createTeam({ name, generation_method = 'manual', period, createdBy, poStudentId, poStudentName, poProgramStudi }) {
-  const duplicateTeam = await query(
-    `SELECT id
-     FROM teams
-     WHERE po_student_id = $1 AND period = $2 AND status IN ('forming', 'active')
-     LIMIT 1`,
-    [poStudentId, period]
-  );
+async function getTeamListBySkill(skillName) {
+  return teamRepo.getTeamListBySkill(skillName);
+}
 
-  if (duplicateTeam.rows.length > 0) {
+async function getTeamDetail(teamId) {
+  return teamRepo.getTeamDetail(teamId);
+}
+
+async function getActiveTeamForMember(studentId) {
+  return teamRepo.findActiveTeamForMember(studentId);
+}
+
+// ── Writes ─────────────────────────────────────────────────────────────────
+
+async function createTeam({ name, period, createdBy, poStudentId, poStudentName, poProgramStudi }) {
+  const existing = await teamRepo.findTeamByPoStudentId(poStudentId);
+  if (existing && existing.period === period) {
     const err = new Error('duplicate_team');
     err.detail = 'Mahasiswa sudah punya tim aktif/forming di period ini';
     err.status = 409;
     throw err;
   }
 
-  const client = await getClient();
-  try {
-    await client.query('BEGIN');
-
-    const teamResult = await client.query(
-      `INSERT INTO teams (name, status, generation_method, period, created_by, po_student_id)
-       VALUES ($1, 'forming', $2, $3, $4, $5)
-       RETURNING id, name, status, generation_method, period, created_by, po_student_id, created_at`,
-      [name, generation_method, period, createdBy, poStudentId]
+  const team = await prisma.$transaction(async (tx) => {
+    const newTeam = await teamRepo.createTeam({ name, period, createdBy, poStudentId }, tx);
+    await teamRepo.createMember(
+      { teamId: newTeam.id, studentId: poStudentId, studentName: poStudentName, programStudi: poProgramStudi, roleInTeam: 'po' },
+      tx
     );
+    await poolRepo.updateStatus(poStudentId, period, 'in_team', tx);
+    return newTeam;
+  });
 
-    const team = teamResult.rows[0];
+  publishToEventLog('TEAM_CREATED', {
+    team_id: team.id,
+    name: team.name,
+    period: team.period,
+    po_student_id: team.po_student_id,
+    created_at: team.created_at,
+  }).catch((err) => console.error('[event-publisher] Failed to publish TEAM_CREATED:', err.message));
 
-    await client.query(
-      `INSERT INTO team_members (team_id, student_id, student_name, program_studi, role_in_team)
-       VALUES ($1, $2, $3, $4, 'po')`,
-      [team.id, poStudentId, poStudentName, poProgramStudi]
-    );
-
-    await client.query(
-      `UPDATE pool_entries
-       SET status = 'in_team', updated_at = CURRENT_TIMESTAMP
-       WHERE student_id = $1 AND period = $2 AND deleted_at IS NULL`,
-      [poStudentId, period]
-    );
-
-    await client.query('COMMIT');
-    return team;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function inviteMemberToTeam({ teamId, inviterStudentId, inviteeStudentId, message = null }) {
-  const team = await getTeamById(teamId);
-  if (!team) {
-    const err = new Error('team_not_found');
-    err.detail = 'Tim tidak ditemukan';
-    err.status = 404;
-    throw err;
-  }
-
-  if (team.status !== 'forming') {
-    const err = new Error('invalid_team_status');
-    err.detail = 'Hanya tim berstatus forming yang bisa mengundang anggota';
-    err.status = 400;
-    throw err;
-  }
-
-  if (team.po_student_id !== inviterStudentId) {
-    const err = new Error('forbidden');
-    err.detail = 'Hanya PO tim yang boleh mengirim undangan';
-    err.status = 403;
-    throw err;
-  }
-
-  const inviterMember = await getTeamMemberByStudentId(teamId, inviterStudentId);
-  if (!inviterMember || inviterMember.role_in_team !== 'po') {
-    const err = new Error('forbidden');
-    err.detail = 'Hanya PO tim yang boleh mengirim undangan';
-    err.status = 403;
-    throw err;
-  }
-
-  const inviteePoolEntry = await getPoolEntryByStudentAndPeriod(inviteeStudentId, team.period);
-  if (!inviteePoolEntry) {
-    const err = new Error('invitee_not_found');
-    err.detail = 'Mahasiswa yang diundang tidak ditemukan di pool pada period ini';
-    err.status = 404;
-    throw err;
-  }
-
-  if (inviteePoolEntry.status !== 'waiting') {
-    const err = new Error('invitee_not_available');
-    err.detail = 'Mahasiswa yang diundang harus berstatus waiting';
-    err.status = 400;
-    throw err;
-  }
-
-  const existingInvite = await query(
-    `SELECT id
-     FROM team_invites
-     WHERE team_id = $1 AND invitee_student_id = $2 AND status = 'pending'
-     LIMIT 1`,
-    [teamId, inviteeStudentId]
-  );
-
-  if (existingInvite.rows.length > 0) {
-    const err = new Error('duplicate_invite');
-    err.detail = 'Undangan pending sudah ada untuk mahasiswa ini';
-    err.status = 409;
-    throw err;
-  }
-
-  const inviteResult = await query(
-    `INSERT INTO team_invites (team_id, inviter_student_id, invitee_student_id, status, message)
-     VALUES ($1, $2, $3, 'pending', $4)
-     RETURNING id, team_id, inviter_student_id, invitee_student_id, status, message, created_at, responded_at`,
-    [teamId, inviterStudentId, inviteeStudentId, message]
-  );
-
-  return inviteResult.rows[0];
-}
-
-async function getInviteById(inviteId) {
-  const result = await query(
-    `SELECT id, team_id, inviter_student_id, invitee_student_id, status, message, created_at, responded_at
-     FROM team_invites
-     WHERE id = $1
-     LIMIT 1`,
-    [inviteId]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function respondToInvite({ inviteId, respondentStudentId, response }) {
-  const invite = await getInviteById(inviteId);
-  if (!invite) {
-    const err = new Error('invite_not_found');
-    err.detail = 'Undangan tidak ditemukan';
-    err.status = 404;
-    throw err;
-  }
-
-  if (invite.invitee_student_id !== respondentStudentId) {
-    const err = new Error('forbidden');
-    err.detail = 'Hanya penerima undangan yang boleh merespon';
-    err.status = 403;
-    throw err;
-  }
-
-  if (invite.status !== 'pending') {
-    const err = new Error('invalid_invite_status');
-    err.detail = `Undangan sudah ${invite.status}`;
-    err.status = 400;
-    throw err;
-  }
-
-  const team = await getTeamById(invite.team_id);
-  if (!team) {
-    const err = new Error('team_not_found');
-    err.detail = 'Tim pada undangan tidak ditemukan';
-    err.status = 404;
-    throw err;
-  }
-
-  const inviteePoolEntry = await getPoolEntryByStudentAndPeriod(invite.invitee_student_id, team.period);
-  if (!inviteePoolEntry) {
-    const err = new Error('invitee_not_found');
-    err.detail = 'Mahasiswa penerima undangan tidak ditemukan di pool pada period ini';
-    err.status = 404;
-    throw err;
-  }
-
-  const client = await getClient();
-  try {
-    await client.query('BEGIN');
-
-    if (response === 'accepted') {
-      const existingMember = await client.query(
-        `SELECT id
-         FROM team_members
-         WHERE team_id = $1 AND student_id = $2 AND left_at IS NULL
-         LIMIT 1`,
-        [invite.team_id, invite.invitee_student_id]
-      );
-
-      if (existingMember.rows.length > 0) {
-        const err = new Error('already_member');
-        err.detail = 'Mahasiswa sudah menjadi anggota tim';
-        err.status = 409;
-        throw err;
-      }
-
-      if (inviteePoolEntry.status !== 'waiting') {
-        const err = new Error('invitee_not_available');
-        err.detail = 'Mahasiswa penerima undangan harus berstatus waiting';
-        err.status = 400;
-        throw err;
-      }
-
-      await client.query(
-        `INSERT INTO team_members (team_id, student_id, student_name, program_studi, role_in_team)
-         VALUES ($1, $2, $3, $4, 'member')`,
-        [invite.team_id, invite.invitee_student_id, inviteePoolEntry.student_name, inviteePoolEntry.program_studi]
-      );
-
-      await client.query(
-        `UPDATE pool_entries
-         SET status = 'in_team', updated_at = CURRENT_TIMESTAMP
-         WHERE student_id = $1 AND period = $2 AND deleted_at IS NULL`,
-        [invite.invitee_student_id, team.period]
-      );
-
-      const updateInviteResult = await client.query(
-        `UPDATE team_invites
-         SET status = 'accepted', responded_at = CURRENT_TIMESTAMP
-         WHERE id = $1
-         RETURNING id, team_id, inviter_student_id, invitee_student_id, status, message, created_at, responded_at`,
-        [inviteId]
-      );
-
-      // Patenkan ke database sebelum kalkulasi
-      await client.query('COMMIT');
-
-      // Kalkulasi skor Advanced (Level 3)
-      try {
-        await recalculateTeamScores(invite.team_id, team.period);
-      } catch (scoreError) {
-        console.error('[SCORING ERROR] Gagal menghitung ulang skor tim:', scoreError);
-      }
-
-      return updateInviteResult.rows[0];
-    }
-
-    if (response === 'rejected') {
-      const updateInviteResult = await client.query(
-        `UPDATE team_invites
-         SET status = 'rejected', responded_at = CURRENT_TIMESTAMP
-         WHERE id = $1
-         RETURNING id, team_id, inviter_student_id, invitee_student_id, status, message, created_at, responded_at`,
-        [inviteId]
-      );
-
-      await client.query('COMMIT');
-      return updateInviteResult.rows[0];
-    }
-
-    const err = new Error('invalid_response');
-    err.detail = 'Response harus accepted atau rejected';
-    err.status = 400;
-    throw err;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function updateRequiredSkills(teamId, poStudentId, requiredSkills) {
-  const team = await getTeamById(teamId);
-  if (!team) throw { status: 404, message: 'team_not_found' };
-  if (team.po_student_id !== poStudentId) throw { status: 403, message: 'forbidden', detail: 'Hanya PO yang bisa update' };
-
-  const result = await query(
-    `UPDATE teams SET required_skills = $1 WHERE id = $2 RETURNING id, name, required_skills`,
-    [JSON.stringify(requiredSkills), teamId]
-  );
-  return result.rows[0];
-}
-
-async function getTeamList() {
-  // legacy: no filter
-  const result = await query(`SELECT id, name, status, required_skills, po_student_id FROM teams WHERE status = 'forming'`);
-  return result.rows;
-}
-
-// New: filtered list by skill when provided (skill should be a string)
-async function getTeamListBySkill(needsSkill) {
-  if (!needsSkill) return getTeamList();
-
-  // Use jsonb ? operator which returns true if the string exists in top-level JSON array
-  const result = await query(
-    `SELECT id, name, status, required_skills, po_student_id FROM teams WHERE status = 'forming' AND required_skills ? $1`,
-    [needsSkill]
-  );
-  return result.rows;
-}
-
-async function getTeamDetail(teamId) {
-  const teamResult = await query(`SELECT * FROM teams WHERE id = $1`, [teamId]);
-  if (teamResult.rows.length === 0) return null;
-  
-  const memberResult = await query(`SELECT student_id, student_name, role_in_team FROM team_members WHERE team_id = $1 AND left_at IS NULL`, [teamId]);
-  
-  const team = teamResult.rows[0];
-  team.members = memberResult.rows;
   return team;
 }
 
+async function inviteMemberToTeam({ teamId, inviterStudentId, inviteeStudentId, message = null }) {
+  const team = await teamRepo.findTeamById(teamId);
+  if (!team) throw { status: 404, message: 'team_not_found', detail: 'Tim tidak ditemukan' };
+  if (team.status !== 'forming') throw { status: 400, message: 'invalid_team_status', detail: 'Hanya tim berstatus forming yang bisa mengundang anggota' };
+  if (team.po_student_id !== inviterStudentId) throw { status: 403, message: 'forbidden', detail: 'Hanya PO tim yang boleh mengirim undangan' };
+
+  const inviterMember = await teamRepo.findMember(teamId, inviterStudentId);
+  if (!inviterMember || inviterMember.role_in_team !== 'po') throw { status: 403, message: 'forbidden', detail: 'Hanya PO tim yang boleh mengirim undangan' };
+
+  const inviteePoolEntry = await poolRepo.findEntry(inviteeStudentId, team.period);
+  if (!inviteePoolEntry) throw { status: 404, message: 'invitee_not_found', detail: 'Mahasiswa yang diundang tidak ditemukan di pool pada period ini' };
+  if (inviteePoolEntry.status === 'withdrawn') throw { status: 400, message: 'withdrawn_user', detail: 'Mahasiswa sudah keluar dari pool dan tidak bisa diundang' };
+  if (inviteePoolEntry.status !== 'waiting') throw { status: 400, message: 'invalid_pool_status', detail: `Status mahasiswa saat ini adalah ${inviteePoolEntry.status}, harus waiting` };
+
+  const existingInvite = await teamRepo.findPendingInvite(teamId, inviteeStudentId);
+  if (existingInvite) throw { status: 409, message: 'duplicate_invite', detail: 'Undangan pending sudah ada untuk mahasiswa ini' };
+
+  return teamRepo.createInvite({ teamId, inviterStudentId, inviteeStudentId, message });
+}
+
+async function respondToInvite({ inviteId, respondentStudentId, response }) {
+  const invite = await teamRepo.findInvite(inviteId);
+  if (!invite) throw { status: 404, message: 'invite_not_found', detail: 'Undangan tidak ditemukan' };
+  if (invite.invitee_student_id !== respondentStudentId) throw { status: 403, message: 'forbidden', detail: 'Hanya penerima undangan yang boleh merespon' };
+  if (invite.status !== 'pending') throw { status: 400, message: 'invalid_invite_status', detail: `Undangan sudah ${invite.status}` };
+
+  const team = await teamRepo.findTeamById(invite.team_id);
+  if (!team) throw { status: 404, message: 'team_not_found', detail: 'Tim pada undangan tidak ditemukan' };
+
+  const inviteePoolEntry = await poolRepo.findEntry(invite.invitee_student_id, team.period);
+  if (!inviteePoolEntry) throw { status: 404, message: 'invitee_not_found', detail: 'Mahasiswa penerima undangan tidak ditemukan di pool' };
+
+  if (response === 'accepted') {
+    const existingMember = await teamRepo.findMember(invite.team_id, invite.invitee_student_id);
+    if (existingMember) throw { status: 409, message: 'already_member', detail: 'Mahasiswa sudah menjadi anggota tim' };
+    if (inviteePoolEntry.status !== 'waiting') throw { status: 400, message: 'invitee_not_available', detail: `Mahasiswa penerima undangan harus berstatus waiting (Status saat ini: ${inviteePoolEntry.status})` };
+
+    const updatedInvite = await prisma.$transaction(async (tx) => {
+      await teamRepo.createMember(
+        { teamId: invite.team_id, studentId: invite.invitee_student_id, studentName: inviteePoolEntry.student_name, programStudi: inviteePoolEntry.program_studi },
+        tx
+      );
+      await poolRepo.updateStatus(invite.invitee_student_id, team.period, 'in_team', tx);
+      return teamRepo.updateInviteStatus(inviteId, 'accepted', tx);
+    });
+
+    publishToEventLog('TEAM_MEMBER_JOINED', {
+      team_id: invite.team_id,
+      student_id: invite.invitee_student_id,
+      period: team.period,
+      joined_via: 'invite',
+    }).catch((err) => console.error('[event-publisher] Failed to publish TEAM_MEMBER_JOINED:', err.message));
+
+    recalculateTeamScores(invite.team_id, team.period).catch((err) => console.error('[SCORING ERROR]', err));
+
+    return updatedInvite;
+  }
+
+  if (response === 'rejected') {
+    return teamRepo.updateInviteStatus(inviteId, 'rejected');
+  }
+
+  throw { status: 400, message: 'invalid_response', detail: 'Response harus accepted atau rejected' };
+}
+
+async function updateRequiredSkills(teamId, poStudentId, requiredSkills) {
+  const team = await teamRepo.findTeamById(teamId);
+  if (!team) throw { status: 404, message: 'team_not_found', detail: 'Tim tidak ditemukan' };
+  if (team.po_student_id !== poStudentId) throw { status: 403, message: 'forbidden', detail: 'Hanya PO yang bisa update required skills' };
+
+  await prisma.$transaction((tx) => teamRepo.replaceRequiredSkills(teamId, requiredSkills, tx));
+  return { id: teamId, required_skills: requiredSkills };
+}
+
 async function createJoinRequest({ teamId, studentId, message }) {
-  const team = await getTeamById(teamId);
-  if (!team || team.status !== 'forming') throw { status: 400, message: 'invalid_team' };
+  const team = await teamRepo.findTeamById(teamId);
+  if (!team || team.status !== 'forming') throw { status: 400, message: 'invalid_team', detail: 'Tim tidak ditemukan atau tidak berstatus forming' };
 
-  const poolCheck = await getPoolEntryByStudentAndPeriod(studentId, team.period);
-  if (!poolCheck || poolCheck.status !== 'waiting') throw { status: 400, message: 'invalid_pool_status' };
+  const poolCheck = await poolRepo.findEntry(studentId, team.period);
+  if (!poolCheck) throw { status: 404, message: 'pool_entry_not_found', detail: 'Kamu belum join pool' };
+  if (poolCheck.status === 'withdrawn') throw { status: 400, message: 'withdrawn_user', detail: 'Kamu sudah keluar dari pool dan tidak bisa mengirim request' };
+  if (poolCheck.status !== 'waiting') throw { status: 400, message: 'invalid_pool_status', detail: `Hanya status waiting yang bisa apply. Status kamu saat ini: ${poolCheck.status}` };
 
-  const result = await query(
-    `INSERT INTO team_join_requests (team_id, requester_student_id, message, status) VALUES ($1, $2, $3, 'pending') RETURNING *`,
-    [teamId, studentId, message]
-  );
-  return result.rows[0];
+  return teamRepo.createJoinRequest({ teamId, studentId, message });
 }
 
 async function respondJoinRequest({ requestId, poStudentId, response }) {
-  const client = await getClient();
-  try {
-    await client.query('BEGIN');
-    
-    const reqResult = await client.query(`SELECT * FROM team_join_requests WHERE id = $1 AND status = 'pending'`, [requestId]);
-    if (reqResult.rows.length === 0) throw { status: 404, message: 'request_not_found' };
-    const joinReq = reqResult.rows[0];
+  const joinReq = await teamRepo.findJoinRequest(requestId);
+  if (!joinReq) throw { status: 404, message: 'request_not_found', detail: 'Request join tidak ditemukan' };
 
-    const team = await getTeamById(joinReq.team_id);
-    if (team.po_student_id !== poStudentId) throw { status: 403, message: 'forbidden' };
+  const team = await teamRepo.findTeamById(joinReq.team_id);
+  if (team.po_student_id !== poStudentId) throw { status: 403, message: 'forbidden', detail: 'Hanya PO yang berhak merespons' };
 
-    if (response === 'accepted') {
-      const poolCheck = await getPoolEntryByStudentAndPeriod(joinReq.requester_student_id, team.period);
-      await client.query(
-        `INSERT INTO team_members (team_id, student_id, student_name, program_studi, role_in_team) VALUES ($1, $2, $3, $4, 'member')`, 
-        [team.id, joinReq.requester_student_id, poolCheck.student_name, poolCheck.program_studi]
+  if (response === 'accepted') {
+    const poolCheck = await poolRepo.findEntry(joinReq.requester_student_id, team.period);
+    if (!poolCheck || poolCheck.status !== 'waiting') throw { status: 400, message: 'invalid_pool_status', detail: 'Kandidat sudah tidak available (status bukan waiting)' };
+
+    const result = await prisma.$transaction(async (tx) => {
+      await teamRepo.createMember(
+        { teamId: team.id, studentId: joinReq.requester_student_id, studentName: poolCheck.student_name, programStudi: poolCheck.program_studi },
+        tx
       );
-      await client.query(`UPDATE pool_entries SET status = 'in_team' WHERE student_id = $1 AND period = $2`, [joinReq.requester_student_id, team.period]);
-    }
+      await poolRepo.updateStatus(joinReq.requester_student_id, team.period, 'in_team', tx);
+      return teamRepo.updateJoinRequestStatus(requestId, 'accepted', tx);
+    });
 
-    const updatedReq = await client.query(`UPDATE team_join_requests SET status = $1 WHERE id = $2 RETURNING *`, [response, requestId]);
-    await client.query('COMMIT');
-    
-    // Kalkulasi skor jika di-accept
-    if (response === 'accepted') {
-      try { await recalculateTeamScores(team.id, team.period); } catch (e) { console.error(e); }
-    }
-    
-    return updatedReq.rows[0];
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
+    publishToEventLog('TEAM_MEMBER_JOINED', {
+      team_id: team.id,
+      student_id: joinReq.requester_student_id,
+      period: team.period,
+      joined_via: 'join_request',
+    }).catch((err) => console.error('[event-publisher] Failed to publish TEAM_MEMBER_JOINED:', err.message));
+
+    recalculateTeamScores(team.id, team.period).catch((err) => console.error('[SCORING ERROR]', err));
+
+    return result;
   }
+
+  return teamRepo.updateJoinRequestStatus(requestId, 'rejected');
 }
 
 async function removeMember(teamId, targetStudentId, period) {
-  const client = await getClient();
-  try {
-    await client.query('BEGIN');
-    await client.query(`UPDATE team_members SET left_at = CURRENT_TIMESTAMP WHERE team_id = $1 AND student_id = $2 AND left_at IS NULL`, [teamId, targetStudentId]);
-    await client.query(`UPDATE pool_entries SET status = 'waiting' WHERE student_id = $1 AND period = $2`, [targetStudentId, period]);
-    await client.query('COMMIT');
-    
-    // Hitung ulang skor setelah member keluar
-    try { await recalculateTeamScores(teamId, period); } catch (e) { console.error(e); }
-    
-    return { success: true };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  const memberCheck = await prisma.teamMember.findFirst({
+    where: { teamId, studentId: targetStudentId },
+    orderBy: { joinedAt: 'desc' },
+  });
+
+  if (!memberCheck) throw { status: 404, message: 'not_in_team', detail: 'User tidak ditemukan di riwayat tim ini' };
+  if (memberCheck.leftAt !== null) throw { status: 400, message: 'already_left', detail: 'User tersebut sudah bukan anggota aktif di tim ini' };
+
+  await prisma.$transaction(async (tx) => {
+    await teamRepo.setMemberLeft(teamId, targetStudentId, tx);
+    await poolRepo.updateStatus(targetStudentId, period, 'waiting', tx);
+  });
+
+  publishToEventLog('TEAM_MEMBER_REMOVED', {
+    team_id: teamId,
+    student_id: targetStudentId,
+    period,
+  }).catch((err) => console.error('[event-publisher] Failed to publish TEAM_MEMBER_REMOVED:', err.message));
+
+  recalculateTeamScores(teamId, period).catch((err) => console.error('[SCORING ERROR]', err));
+
+  return { success: true };
 }
 
 module.exports = {
-  createTeam,
-  inviteMemberToTeam,
-  respondToInvite,
-  getPoolEntryByStudentAndPeriod,
   getTeamById,
   getTeamByPoStudentId,
-  getActiveTeamByMember,
-  getTeamMemberByStudentId,
-  getInviteById,
-  updateRequiredSkills,
+  getPoolEntryByStudentAndPeriod,
   getTeamList,
   getTeamListBySkill,
   getTeamDetail,
+  getActiveTeamForMember,
+  createTeam,
+  inviteMemberToTeam,
+  respondToInvite,
+  updateRequiredSkills,
   createJoinRequest,
   respondJoinRequest,
   removeMember,

@@ -1,0 +1,152 @@
+// Schema database untuk team-matching-service (kelompok3).
+// Dijalankan via `prisma db push` saat container start (lihat docker-entrypoint.sh).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model PoolEntry {
+  id           String    @id @default(uuid())
+  studentId    String    @map("student_id")
+  studentName  String    @map("student_name")
+  programStudi String    @map("program_studi")
+  sdgTopics    Int[]     @map("sdg_topics")
+  availability String    @default("full-time")
+  notes        String?
+  status       String    @default("waiting")
+  period       String
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  talentSkills TalentSkill[]
+
+  @@unique([studentId, period])
+  @@index([studentId])
+  @@index([period])
+  @@index([status])
+  @@index([programStudi])
+  @@map("pool_entries")
+}
+
+model Team {
+  id                String    @id @default(uuid())
+  name              String
+  status            String    @default("forming")
+  period            String
+  createdBy         String    @map("created_by")
+  poStudentId       String    @map("po_student_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  disbandedAt       DateTime? @map("disbanded_at")
+  skillBalanceScore Decimal?  @map("skill_balance_score") @db.Decimal(4, 3)
+  sdgAlignmentScore Decimal?  @map("sdg_alignment_score") @db.Decimal(4, 3)
+
+  members        TeamMember[]
+  invites        TeamInvite[]
+  joinRequests   TeamJoinRequest[]
+  requiredSkills TeamRequiredSkill[]
+
+  @@index([period])
+  @@index([status])
+  @@index([poStudentId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id           String    @id @default(uuid())
+  teamId       String    @map("team_id")
+  studentId    String    @map("student_id")
+  studentName  String    @map("student_name")
+  programStudi String    @map("program_studi")
+  roleInTeam   String    @default("member") @map("role_in_team")
+  joinedAt     DateTime  @default(now()) @map("joined_at")
+  leftAt       DateTime? @map("left_at")
+  leftReason   String?   @map("left_reason")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([studentId])
+  @@map("team_members")
+}
+
+model TeamInvite {
+  id               String    @id @default(uuid())
+  teamId           String    @map("team_id")
+  inviterStudentId String    @map("inviter_student_id")
+  inviteeStudentId String    @map("invitee_student_id")
+  status           String    @default("pending")
+  message          String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  respondedAt      DateTime? @map("responded_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([inviteeStudentId])
+  @@index([status])
+  @@map("team_invites")
+}
+
+model TeamJoinRequest {
+  id                 String    @id @default(uuid())
+  teamId             String    @map("team_id")
+  requesterStudentId String    @map("requester_student_id")
+  status             String    @default("pending")
+  message            String?
+  rejectReason       String?   @map("reject_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  respondedAt        DateTime? @map("responded_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([requesterStudentId])
+  @@index([status])
+  @@map("team_join_requests")
+}
+
+model TalentSkill {
+  id         String   @id @default(uuid())
+  studentId  String   @map("student_id")
+  skillName  String   @map("skill_name")
+  skillLevel Int      @default(1) @map("skill_level")
+  period     String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  poolEntry PoolEntry @relation(fields: [studentId, period], references: [studentId, period])
+
+  @@index([studentId, period])
+  @@map("talent_skills")
+}
+
+model TeamRequiredSkill {
+  id            String @id @default(uuid())
+  teamId        String @map("team_id")
+  skillName     String @map("skill_name")
+  requiredCount Int    @default(1) @map("required_count")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@map("team_required_skills")
+}
+
+model EventLog {
+  id        String   @id @default(uuid())
+  eventType String   @map("event_type")
+  payload   Json
+  status    String   @default("pending")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([eventType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("event_logs")
+}
