@@ -144,22 +144,35 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      # Salin compose deploy + .env ke PC dosen, lalu pull image baru
-      # dan restart service yang berubah saja (no-deps biar DB/Rabbit
-      # tidak ikut restart). force_all = restart semuanya.
+      # SSH/SCP dijalankan langsung di shell runner (bukan via Docker-based
+      # action) supaya bisa pakai interface tailscale0 di runner host.
+      # appleboy/scp-action jalan di dalam container terpisah yang tidak
+      # melihat route Tailscale, sehingga selalu i/o timeout.
+      - name: Setup SSH key & known_hosts
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
       - name: Copy compose file to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "kelompok4/nexus-integration/docker-compose.deploy.yml"
-          target: "~/nexus/"
-          strip_components: 2
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'mkdir -p ~/nexus'
+          scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no \
+            kelompok4/nexus-integration/docker-compose.deploy.yml \
+            "$SERVER_USER@$SERVER_HOST:~/nexus/docker-compose.deploy.yml"
 
       - name: Pull & restart changed services
-        uses: appleboy/ssh-action@v1.2.0
         env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
           FORCE_ALL: ${{ needs.detect.outputs.force_all }}
           CH_AUTH: ${{ needs.detect.outputs.auth }}
           CH_BIDDING: ${{ needs.detect.outputs.bidding }}
@@ -167,32 +180,30 @@ jobs:
           CH_AUDIT: ${{ needs.detect.outputs.audit }}
           CH_NOTIFY: ${{ needs.detect.outputs.notify }}
           CH_GATEWAY: ${{ needs.detect.outputs.gateway }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: FORCE_ALL,CH_AUTH,CH_BIDDING,CH_MATCH,CH_AUDIT,CH_NOTIFY,CH_GATEWAY
-          script: |
-            set -e
-            cd ~/nexus
-            # File .env wajib sudah disiapkan manual di server.
-            test -f .env || { echo "ERROR: ~/nexus/.env belum ada di PC dosen"; exit 1; }
+        run: |
+          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=no \
+            "$SERVER_USER@$SERVER_HOST" \
+            "FORCE_ALL='$FORCE_ALL' CH_AUTH='$CH_AUTH' CH_BIDDING='$CH_BIDDING' CH_MATCH='$CH_MATCH' CH_AUDIT='$CH_AUDIT' CH_NOTIFY='$CH_NOTIFY' CH_GATEWAY='$CH_GATEWAY' bash -s" <<'REMOTE'
+          set -e
+          cd ~/nexus
+          test -f .env || { echo "ERROR: ~/nexus/.env belum ada di PC dosen"; exit 1; }
 
-            services=""
-            if [ "$FORCE_ALL" = "true" ]; then
-              services="svc-auth svc-bidding svc-match svc-audit svc-notify gateway"
-            else
-              [ "$CH_AUTH"    = "true" ] && services="$services svc-auth"
-              [ "$CH_BIDDING" = "true" ] && services="$services svc-bidding"
-              [ "$CH_MATCH"   = "true" ] && services="$services svc-match"
-              [ "$CH_AUDIT"   = "true" ] && services="$services svc-audit"
-              [ "$CH_NOTIFY"  = "true" ] && services="$services svc-notify"
-              [ "$CH_GATEWAY" = "true" ] && services="$services gateway"
-            fi
-            services=$(echo "$services" | xargs)
-            echo "Deploying: $services"
+          services=""
+          if [ "$FORCE_ALL" = "true" ]; then
+            services="svc-auth svc-bidding svc-match svc-audit svc-notify gateway"
+          else
+            [ "$CH_AUTH"    = "true" ] && services="$services svc-auth"
+            [ "$CH_BIDDING" = "true" ] && services="$services svc-bidding"
+            [ "$CH_MATCH"   = "true" ] && services="$services svc-match"
+            [ "$CH_AUDIT"   = "true" ] && services="$services svc-audit"
+            [ "$CH_NOTIFY"  = "true" ] && services="$services svc-notify"
+            [ "$CH_GATEWAY" = "true" ] && services="$services gateway"
+          fi
+          services=$(echo "$services" | xargs)
+          echo "Deploying: $services"
 
-            docker compose -f docker-compose.deploy.yml pull $services
-            docker compose -f docker-compose.deploy.yml up -d --no-deps $services
-            docker image prune -f
-            docker compose -f docker-compose.deploy.yml ps
+          docker compose -f docker-compose.deploy.yml pull $services
+          docker compose -f docker-compose.deploy.yml up -d --no-deps $services
+          docker image prune -f
+          docker compose -f docker-compose.deploy.yml ps
+          REMOTE
