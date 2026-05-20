@@ -483,18 +483,33 @@ model Portfolio {
 }
 
 model AuditLog {
-  id        String      @id @default(uuid()) @db.Uuid
-  action    AuditAction
-  userId    String?     @map("user_id") @db.Uuid
-  ip        String?
-  userAgent String?     @map("user_agent")
-  metadata  Json?
-  createdAt DateTime    @default(now()) @map("created_at")
+  id             String      @id @default(uuid()) @db.Uuid
+  action         AuditAction
+  userId         String?     @map("user_id") @db.Uuid
+  ip             String?
+  userAgent      String?     @map("user_agent")
+  metadata       Json?
+  outboxEventId  String?     @unique @map("outbox_event_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id          String      @id @default(uuid()) @db.Uuid
+  eventType   AuditAction @map("event_type")
+  userId      String?     @map("user_id") @db.Uuid
+  ip          String?
+  userAgent   String?     @map("user_agent")
+  payload     Json
+  createdAt   DateTime    @default(now()) @map("created_at")
+  publishedAt DateTime?   @map("published_at")
+
+  @@index([publishedAt])
+  @@map("outbox_events")
 }
 
 model TalentProjectCompletion {

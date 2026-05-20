@@ -1,11 +1,14 @@
 import type { Prisma, TalentProjectCompletion } from "@prisma/client";
 
 import { prisma } from "../models/prisma";
+import type { Db } from "./types";
 
 export const talentProjectCompletionRepository = {
   create: (
     data: Prisma.TalentProjectCompletionCreateInput,
-  ): Promise<TalentProjectCompletion> => prisma.talentProjectCompletion.create({ data }),
+    db: Db = prisma,
+  ): Promise<TalentProjectCompletion> =>
+    (db as typeof prisma).talentProjectCompletion.create({ data }),
 
   findByTalentAndProject: (
     talentId: string,

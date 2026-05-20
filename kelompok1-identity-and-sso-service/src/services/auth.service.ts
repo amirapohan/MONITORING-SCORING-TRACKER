@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 import { config } from "../config";
+import { prisma } from "../models/prisma";
 import { refreshTokenRepository } from "../repositories/refreshToken.repository";
 import { tokenBlacklistRepository } from "../repositories/tokenBlacklist.repository";
 import { userRepository } from "../repositories/user.repository";
@@ -24,8 +25,8 @@ import {
   generateRefreshToken,
   verifyRefreshToken,
 } from "../utils/jwt";
+import { emitEvent, emitEventBestEffort } from "../utils/events";
 import { parseExpiresToMs } from "../utils/time";
-import { logAuditEvent } from "../utils/audit";
 import { stripPassword } from "../utils/user";
 
 type RegisterInput = {
@@ -53,8 +54,6 @@ type ProfileResponse = SafeUser & {
   projectCompletions: TalentProjectCompletion[];
 };
 
-const log = logAuditEvent;
-
 export const authService = {
   async register(input: RegisterInput, ctx?: RequestContext): Promise<SafeUser> {
     const existing = await userRepository.findByEmail(input.email);
@@ -63,16 +62,39 @@ export const authService = {
     }
 
     const hashedPassword = await bcrypt.hash(input.password, 12);
-    const user = await userRepository.create({
-      name: input.name,
-      email: input.email,
-      password: hashedPassword,
-      role: input.role ?? "talent",
-      skills: uniqueSkillValues(input.skills),
-      subSkills: uniqueSkillValues(input.subSkills),
-    });
 
-    await log({ action: "REGISTER", userId: user.id, ...ctx, metadata: { role: user.role } });
+    let user;
+    try {
+      user = await prisma.$transaction(async (tx) => {
+        const created = await userRepository.create(
+          {
+            name: input.name,
+            email: input.email,
+            password: hashedPassword,
+            role: input.role ?? "talent",
+            skills: uniqueSkillValues(input.skills),
+            subSkills: uniqueSkillValues(input.subSkills),
+          },
+          tx,
+        );
+        await emitEvent(tx, {
+          eventType: "REGISTER",
+          userId: created.id,
+          ...ctx,
+          metadata: { role: created.role },
+        });
+        return created;
+      });
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        "code" in err &&
+        (err as { code: string }).code === "P2002"
+      ) {
+        throw new ConflictError("Email already registered");
+      }
+      throw err;
+    }
 
     return stripPassword(user);
   },
@@ -88,13 +110,22 @@ export const authService = {
     const user = await userRepository.findByEmail(input.email);
 
     if (!user || !user.isActive || !user.password) {
-      await log({ action: "LOGIN_FAILED", ...ctx, metadata: { email: input.email } });
+      await emitEventBestEffort({
+        eventType: "LOGIN_FAILED",
+        ...ctx,
+        metadata: { email: input.email },
+      });
       throw new UnauthorizedError("Invalid credentials or account is inactive");
     }
 
     const isMatch = await bcrypt.compare(input.password, user.password);
     if (!isMatch) {
-      await log({ action: "LOGIN_FAILED", userId: user.id, ...ctx, metadata: { email: input.email } });
+      await emitEventBestEffort({
+        eventType: "LOGIN_FAILED",
+        userId: user.id,
+        ...ctx,
+        metadata: { email: input.email },
+      });
       throw new UnauthorizedError("Invalid credentials or account is inactive");
     }
 
@@ -105,13 +136,17 @@ export const authService = {
     });
     const refreshToken = generateRefreshToken({ id: user.id });
 
-    await refreshTokenRepository.create({
-      userId: user.id,
-      token: refreshToken,
-      expiresAt: new Date(Date.now() + parseExpiresToMs(config.jwt.refreshExpiresIn)),
+    await prisma.$transaction(async (tx) => {
+      await refreshTokenRepository.create(
+        {
+          userId: user.id,
+          token: refreshToken,
+          expiresAt: new Date(Date.now() + parseExpiresToMs(config.jwt.refreshExpiresIn)),
+        },
+        tx,
+      );
+      await emitEvent(tx, { eventType: "LOGIN_SUCCESS", userId: user.id, ...ctx });
     });
-
-    await log({ action: "LOGIN_SUCCESS", userId: user.id, ...ctx });
 
     return { accessToken, refreshToken, user: stripPassword(user) };
   },
@@ -147,7 +182,7 @@ export const authService = {
       role: user.role,
     });
 
-    await log({ action: "TOKEN_REFRESH", userId: user.id, ...ctx });
+    await emitEventBestEffort({ eventType: "TOKEN_REFRESH", userId: user.id, ...ctx });
 
     return { accessToken };
   },
@@ -161,6 +196,8 @@ export const authService = {
       throw new BadRequestError("Refresh token is required");
     }
 
+    // Redis blacklist before the DB txn — safe order: if txn fails, worst case
+    // the access token is blacklisted in Redis but refresh row still exists.
     if (accessToken) {
       const decoded = jwt.decode(accessToken) as { exp?: number; jti?: string } | null;
       const now = Math.floor(Date.now() / 1000);
@@ -178,8 +215,10 @@ export const authService = {
       // token may be invalid but we still delete it
     }
 
-    await refreshTokenRepository.deleteByToken(refreshToken);
-    await log({ action: "LOGOUT", userId, ...ctx });
+    await prisma.$transaction(async (tx) => {
+      await refreshTokenRepository.deleteByToken(refreshToken, tx);
+      await emitEvent(tx, { eventType: "LOGOUT", userId, ...ctx });
+    });
   },
 
   async getProfile(userId: string): Promise<ProfileResponse> {
@@ -205,21 +244,25 @@ export const authService = {
     if (!user) {
       throw new NotFoundError("User not found");
     }
-    await refreshTokenRepository.deleteAllByUserId(targetId);
-    const updated = await userRepository.update(targetId, { isActive: false });
 
-    // Mark in Redis so existing access tokens are rejected immediately
+    const updated = await prisma.$transaction(async (tx) => {
+      await refreshTokenRepository.deleteAllByUserId(targetId, tx);
+      const u = await userRepository.update(targetId, { isActive: false }, tx);
+      await emitEvent(tx, {
+        eventType: "USER_DEACTIVATED",
+        userId: adminId,
+        ...ctx,
+        metadata: { targetUserId: targetId, targetEmail: user.email },
+      });
+      return u;
+    });
+
+    // Mark in Redis AFTER commit — if Redis fails, user is deactivated in DB
+    // and refresh tokens are revoked, so damage is contained.
     const accessTokenTtl = Math.ceil(
       parseExpiresToMs(config.jwt.accessExpiresIn) / 1000,
     );
     await tokenBlacklistRepository.addDeactivatedUser(targetId, accessTokenTtl);
-
-    await log({
-      action: "USER_DEACTIVATED",
-      userId: adminId,
-      ...ctx,
-      metadata: { targetUserId: targetId, targetEmail: user.email },
-    });
 
     return stripPassword(updated);
   },

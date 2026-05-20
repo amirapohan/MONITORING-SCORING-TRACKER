@@ -1,6 +1,7 @@
 import type { Prisma, User } from "@prisma/client";
 
 import { prisma } from "../models/prisma";
+import type { Db } from "./types";
 
 export const userRepository = {
   findByEmail: (email: string): Promise<User | null> =>
@@ -19,11 +20,11 @@ export const userRepository = {
       },
     }),
 
-  create: (data: Prisma.UserCreateInput): Promise<User> =>
-    prisma.user.create({ data }),
+  create: (data: Prisma.UserCreateInput, db: Db = prisma): Promise<User> =>
+    (db as typeof prisma).user.create({ data }),
 
-  update: (id: string, data: Prisma.UserUpdateInput): Promise<User> =>
-    prisma.user.update({ where: { id }, data }),
+  update: (id: string, data: Prisma.UserUpdateInput, db: Db = prisma): Promise<User> =>
+    (db as typeof prisma).user.update({ where: { id }, data }),
 
   findMany: (): Promise<User[]> => prisma.user.findMany(),
 };
