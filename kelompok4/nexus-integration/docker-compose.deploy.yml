@@ -111,6 +111,12 @@ services:
       NODE_ENV: development
       PORT: 8080
       DATABASE_URL: postgres://${BIDDING_DB_USER:-bidding}:${BIDDING_DB_PASS:-bidding}@db-bidding:5432/${BIDDING_DB_NAME:-bidding}
+      AUTH_INTERNAL_URL: http://svc-auth:8080
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@rabbit-main:5672
+      RABBITMQ_EXCHANGE: tracker.events
+      RABBITMQ_EXCHANGE_TYPE: topic
+      RABBITMQ_ROUTING_PREFIX: bidding
     depends_on:
       db-bidding: { condition: service_healthy }
     networks: [nexus-net]
