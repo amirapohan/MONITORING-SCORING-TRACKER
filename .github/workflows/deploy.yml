@@ -1,0 +1,170 @@
+name: Build & Deploy Nexus Services
+
+# Trigger:
+# - Push ke main/integration → otomatis build & deploy service yang berubah
+# - workflow_dispatch → jalan manual (bisa pilih service apa yang dideploy)
+on:
+  push:
+    branches: [main, integration]
+    paths:
+      - "kelompok1-identity-and-sso-service/**"
+      - "kelompok2-project-bidding-service/**"
+      - "kelompok3-team-matching-service/**"
+      - "kelompok4/backend/**"
+      - "kelompok4/nexus-integration/gateway.conf"
+      - "kelompok4/nexus-integration/gateway.Dockerfile"
+      - "kelompok4/nexus-integration/docker-compose.deploy.yml"
+      - "kelompok5-notification-service/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: "Build & deploy semua service (abaikan path filter)"
+        type: boolean
+        default: false
+
+env:
+  DOCKERHUB_NAMESPACE: scientivan
+  IMAGE_TAG: latest
+
+jobs:
+  # ----------------------------------------------------------------
+  # 1. Deteksi service mana yang berubah
+  # ----------------------------------------------------------------
+  detect:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      auth: ${{ steps.filter.outputs.auth }}
+      bidding: ${{ steps.filter.outputs.bidding }}
+      match: ${{ steps.filter.outputs.match }}
+      audit: ${{ steps.filter.outputs.audit }}
+      notify: ${{ steps.filter.outputs.notify }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      force_all: ${{ github.event.inputs.force_all || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            auth:
+              - 'kelompok1-identity-and-sso-service/**'
+            bidding:
+              - 'kelompok2-project-bidding-service/**'
+            match:
+              - 'kelompok3-team-matching-service/**'
+            audit:
+              - 'kelompok4/backend/**'
+            notify:
+              - 'kelompok5-notification-service/**'
+            gateway:
+              - 'kelompok4/nexus-integration/gateway.conf'
+              - 'kelompok4/nexus-integration/gateway.Dockerfile'
+
+  # ----------------------------------------------------------------
+  # 2. Build & push tiap service yang berubah → Docker Hub
+  #    Pakai matrix; tiap entry punya context, dockerfile, target.
+  # ----------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.svc.name }}
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        svc:
+          - { name: auth,    image: nexus-svc-auth,    context: kelompok1-identity-and-sso-service, dockerfile: Dockerfile,                target: dev,         changed_key: auth }
+          - { name: bidding, image: nexus-svc-bidding, context: kelompok2-project-bidding-service,  dockerfile: Dockerfile,                target: development, changed_key: bidding }
+          - { name: match,   image: nexus-svc-match,   context: kelompok3-team-matching-service,    dockerfile: Dockerfile,                target: "",          changed_key: match }
+          - { name: audit,   image: nexus-svc-audit,   context: kelompok4/backend,                  dockerfile: dockerfile,                target: "",          changed_key: audit }
+          - { name: notify,  image: nexus-svc-notify,  context: kelompok5-notification-service,     dockerfile: Dockerfile,                target: "",          changed_key: notify }
+          - { name: gateway, image: nexus-gateway,     context: kelompok4/nexus-integration,        dockerfile: gateway.Dockerfile,        target: "",          changed_key: gateway }
+    steps:
+      - name: Skip if service not changed
+        id: gate
+        run: |
+          force_all='${{ needs.detect.outputs.force_all }}'
+          changed='${{ needs.detect.outputs[matrix.svc.changed_key] }}'
+          if [ "$force_all" = "true" ] || [ "$changed" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Service ${{ matrix.svc.name }} tidak berubah — skip"
+          fi
+
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - if: steps.gate.outputs.run == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.svc.context }}
+          file: ${{ matrix.svc.context }}/${{ matrix.svc.dockerfile }}
+          target: ${{ matrix.svc.target }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.svc.image }}:${{ env.IMAGE_TAG }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.svc.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.svc.name }}
+          cache-to: type=gha,scope=${{ matrix.svc.name }},mode=max
+
+  # ----------------------------------------------------------------
+  # 3. Deploy ke PC dosen — pakai self-hosted runner yang dipasang
+  #    langsung di PC dosen. Tidak butuh SSH/Tailscale: runner narik
+  #    job dari GitHub lewat outbound HTTPS, lalu jalankan docker
+  #    compose secara lokal.
+  # ----------------------------------------------------------------
+  deploy:
+    name: Deploy ke PC dosen
+    needs: [detect, build]
+    runs-on: [self-hosted, nexus-deploy]
+    if: success() && (needs.detect.outputs.force_all == 'true' || needs.detect.outputs.auth == 'true' || needs.detect.outputs.bidding == 'true' || needs.detect.outputs.match == 'true' || needs.detect.outputs.audit == 'true' || needs.detect.outputs.notify == 'true' || needs.detect.outputs.gateway == 'true')
+    env:
+      ENV_FILE: /home/map/nexus/.env
+      COMPOSE_FILE: kelompok4/nexus-integration/docker-compose.deploy.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull & restart changed services
+        env:
+          FORCE_ALL: ${{ needs.detect.outputs.force_all }}
+          CH_AUTH: ${{ needs.detect.outputs.auth }}
+          CH_BIDDING: ${{ needs.detect.outputs.bidding }}
+          CH_MATCH: ${{ needs.detect.outputs.match }}
+          CH_AUDIT: ${{ needs.detect.outputs.audit }}
+          CH_NOTIFY: ${{ needs.detect.outputs.notify }}
+          CH_GATEWAY: ${{ needs.detect.outputs.gateway }}
+        run: |
+          test -f "$ENV_FILE" || { echo "ERROR: $ENV_FILE belum ada"; exit 1; }
+
+          services=""
+          if [ "$FORCE_ALL" = "true" ]; then
+            services="svc-auth svc-bidding svc-match svc-audit svc-notify gateway"
+          else
+            [ "$CH_AUTH"    = "true" ] && services="$services svc-auth"
+            [ "$CH_BIDDING" = "true" ] && services="$services svc-bidding"
+            [ "$CH_MATCH"   = "true" ] && services="$services svc-match"
+            [ "$CH_AUDIT"   = "true" ] && services="$services svc-audit"
+            [ "$CH_NOTIFY"  = "true" ] && services="$services svc-notify"
+            [ "$CH_GATEWAY" = "true" ] && services="$services gateway"
+          fi
+          services=$(echo "$services" | xargs)
+          echo "Deploying: $services"
+
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull $services
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-deps $services
+          docker image prune -f
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps

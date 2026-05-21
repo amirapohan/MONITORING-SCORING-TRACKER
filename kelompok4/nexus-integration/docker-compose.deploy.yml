@@ -1,34 +1,26 @@
 # ============================================================
-#  NEXUS — Master Integration Compose (BUILD FROM SOURCE)
-#  5 microservices + shared infra (RabbitMQ, Redis) + API Gateway.
+#  NEXUS — Deploy compose (PULL FROM DOCKER HUB)
+#  Dipakai di PC dosen. Tidak ada `build:` — semua image di-pull
+#  dari Docker Hub (namespace: scientivan/nexus-*) yang dibangun
+#  oleh GitHub Actions (.github/workflows/deploy.yml).
 #
-#  Layout (sibling folders under /APL):
-#    nexus-integration/ ........ this file (inside the tracker repo)
-#    ../../kelompok1-identity-and-sso-service   (svc-auth, branch develop)
-#    ../../kelompok2-project-bidding-service    (svc-bidding, branch main)
-#    ../../kelompok3-team-matching-service      (svc-match, branch develop)
-#    ../backend                                 (svc-audit, this repo)
-#    ../../kelompok5-notification-service       (svc-notify, branch main)
+#  Setup pertama kali di PC dosen:
+#    mkdir -p ~/nexus && cd ~/nexus
+#    # salin file ini + .env (lihat .env.deploy.example)
+#    docker compose -f docker-compose.deploy.yml pull
+#    docker compose -f docker-compose.deploy.yml up -d
 #
-#  Every service listens on internal port 8080 (PORT env), so the
-#  gateway (gateway.conf) routes uniformly to svc-*:8080.
-#
-#  Usage:
-#    cp .env.example .env   # fill SUPABASE_* (and GMAIL_* if you want real email)
-#    docker compose up -d --build
-#    open http://localhost      (gateway)   |  http://localhost:15672 (RabbitMQ)
+#  Update (manual): docker compose -f docker-compose.deploy.yml pull <svc> && up -d <svc>
+#  (GitHub Actions akan melakukan ini otomatis ketika source berubah.)
 # ============================================================
 
 services:
-
   # ---------- API GATEWAY ----------
   gateway:
-    image: nginx:alpine
+    image: scientivan/nexus-gateway:latest
     container_name: nexus-gateway
     ports:
       - "80:80"
-    volumes:
-      - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - svc-auth
       - svc-bidding
@@ -59,8 +51,6 @@ services:
   redis-main:
     image: redis:7-alpine
     container_name: nexus-redis-main
-    ports:
-      - "6379:6379"
     networks: [nexus-net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -69,14 +59,11 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ---------- SERVICE: AUTH / IDENTITY & SSO (group 1) ----------
+  # ---------- SVC AUTH (kelompok 1) ----------
   svc-auth:
-    build:
-      context: ../../kelompok1-identity-and-sso-service
-      target: dev
+    image: scientivan/nexus-svc-auth:latest
     container_name: SVC-auth
-    ports:
-      - "8081:8080"
+    ports: ["8081:8080"]
     environment:
       NODE_ENV: development
       PORT: 8080
@@ -87,18 +74,15 @@ services:
       JWT_REFRESH_EXPIRES: 7d
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
       REDIS_URL: redis://redis-main:6379
-      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
-    # dev target CMD does not migrate; apply migrations before starting.
-    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma generate && npm run dev"]
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma migrate deploy && npx prisma generate && npm run dev",
+      ]
     depends_on:
       db-auth: { condition: service_healthy }
       redis-main: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 40s
     networks: [nexus-net]
     restart: unless-stopped
 
@@ -109,7 +93,6 @@ services:
       POSTGRES_USER: ${AUTH_DB_USER:-auth}
       POSTGRES_PASSWORD: ${AUTH_DB_PASS:-auth}
       POSTGRES_DB: ${AUTH_DB_NAME:-auth}
-    ports: ["5431:5432"]
     volumes: ["auth_data:/var/lib/postgresql/data"]
     networks: [nexus-net]
     healthcheck:
@@ -119,47 +102,31 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ---------- SERVICE: BIDDING (group 2) ----------
+  # ---------- SVC BIDDING (kelompok 2) ----------
   svc-bidding:
-    build:
-      context: ../../kelompok2-project-bidding-service
-      target: development
+    image: scientivan/nexus-svc-bidding:latest
     container_name: SVC-bidding
-    ports:
-      - "8082:8080"
+    ports: ["8082:8080"]
     environment:
       NODE_ENV: development
       PORT: 8080
       DATABASE_URL: postgres://${BIDDING_DB_USER:-bidding}:${BIDDING_DB_PASS:-bidding}@db-bidding:5432/${BIDDING_DB_NAME:-bidding}
-      AUTH_INTERNAL_URL: http://svc-auth:8080
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
-      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
-      RABBITMQ_EXCHANGE: tracker.events
-      RABBITMQ_EXCHANGE_TYPE: topic
-      RABBITMQ_ROUTING_PREFIX: bidding
     depends_on:
       db-bidding: { condition: service_healthy }
-      rabbit-main: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
     networks: [nexus-net]
     restart: unless-stopped
 
   db-bidding:
+    # CATATAN: schema awal kelompok2 (database_schema.sql) tidak ikut
+    # ter-mount di sini. Seed sekali manual setelah `up -d` pertama:
+    #   docker exec -i DB-bidding psql -U bidding bidding < database_schema.sql
     image: postgres:15-alpine
     container_name: DB-bidding
     environment:
       POSTGRES_USER: ${BIDDING_DB_USER:-bidding}
       POSTGRES_PASSWORD: ${BIDDING_DB_PASS:-bidding}
       POSTGRES_DB: ${BIDDING_DB_NAME:-bidding}
-    ports: ["5435:5432"]
-    volumes:
-      - bidding_data:/var/lib/postgresql/data
-      - ../../kelompok2-project-bidding-service/database_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    volumes: ["bidding_data:/var/lib/postgresql/data"]
     networks: [nexus-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${BIDDING_DB_USER:-bidding}"]
@@ -168,13 +135,11 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ---------- SERVICE: MATCH / TEAM-MATCHING (group 3) ----------
+  # ---------- SVC MATCH (kelompok 3) ----------
   svc-match:
-    build:
-      context: ../../kelompok3-team-matching-service
+    image: scientivan/nexus-svc-match:latest
     container_name: SVC-match
-    ports:
-      - "8083:8080"
+    ports: ["8083:8080"]
     environment:
       NODE_ENV: development
       PORT: 8080
@@ -187,26 +152,19 @@ services:
       INTERNAL_SERVICE_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
     depends_on:
       db-match: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 25s
     networks: [nexus-net]
     restart: unless-stopped
 
   db-match:
+    # CATATAN: migrations/001_initial_schema.sql perlu di-apply manual
+    # sekali pertama: docker exec -i DB-match psql -U match match < 001_initial_schema.sql
     image: postgres:15-alpine
     container_name: DB-match
     environment:
       POSTGRES_USER: ${MATCH_DB_USER:-match}
       POSTGRES_PASSWORD: ${MATCH_DB_PASS:-match}
       POSTGRES_DB: ${MATCH_DB_NAME:-match}
-    ports: ["5433:5432"]
-    volumes:
-      - match_data:/var/lib/postgresql/data
-      - ../../kelompok3-team-matching-service/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    volumes: ["match_data:/var/lib/postgresql/data"]
     networks: [nexus-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MATCH_DB_USER:-match}"]
@@ -215,37 +173,25 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ---------- SERVICE: AUDIT / MONITORING-SCORING-TRACKER (group 4) ----------
+  # ---------- SVC AUDIT (kelompok 4) ----------
   svc-audit:
-    build:
-      context: ../backend
-      dockerfile: dockerfile
+    image: scientivan/nexus-svc-audit:latest
     container_name: SVC-audit
-    ports:
-      - "8084:8080"
+    ports: ["8084:8080"]
     environment:
       PORT: 8080
       DATABASE_URL: postgresql://${AUDIT_DB_USER:-kel4}:${AUDIT_DB_PASS:-kel4}@db-audit:5432/${AUDIT_DB_NAME:-kel4}
       REDIS_URL: redis://redis-main:6379
-      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@rabbit-main:5672
       RABBITMQ_EXCHANGE: tracker.events
       RABBITMQ_EXCHANGE_TYPE: topic
       RABBITMQ_ROUTING_PREFIX: tracker
       AUTH_INTERNAL_URL: http://svc-auth:8080
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-documents}
     depends_on:
       db-audit: { condition: service_healthy }
       redis-main: { condition: service_healthy }
       rabbit-main: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/v1/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
     networks: [nexus-net]
     restart: unless-stopped
 
@@ -256,7 +202,6 @@ services:
       POSTGRES_USER: ${AUDIT_DB_USER:-kel4}
       POSTGRES_PASSWORD: ${AUDIT_DB_PASS:-kel4}
       POSTGRES_DB: ${AUDIT_DB_NAME:-kel4}
-    ports: ["5434:5432"]
     volumes: ["audit_data:/var/lib/postgresql/data"]
     networks: [nexus-net]
     healthcheck:
@@ -266,32 +211,19 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ---------- SERVICE: NOTIFY / NOTIFICATION (group 5) ----------
+  # ---------- SVC NOTIFY (kelompok 5) ----------
   svc-notify:
-    build:
-      context: ../../kelompok5-notification-service
+    image: scientivan/nexus-svc-notify:latest
     container_name: SVC-notify
-    ports:
-      - "8085:8080"
+    ports: ["8085:8080"]
     environment:
       NODE_ENV: development
       PORT: 8080
-      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
-      RABBITMQ_EXCHANGE: tracker.events
-      RABBITMQ_EXCHANGE_TYPE: topic
-      RABBITMQ_QUEUE: notify.events
-      RABBITMQ_BINDINGS: tracker.#,bidding.#
-      # Leave GMAIL_* empty for log-only mode (no real email, no secrets).
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@rabbit-main:5672
       GMAIL_USER: ${GMAIL_USER:-}
       GMAIL_PASS: ${GMAIL_PASS:-}
     depends_on:
       rabbit-main: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
     networks: [nexus-net]
     restart: unless-stopped
 

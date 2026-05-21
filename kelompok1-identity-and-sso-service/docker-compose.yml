@@ -44,6 +44,24 @@ services:
     networks:
       - identity-network
 
+  # ─── RabbitMQ ───────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: identity-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - identity-network
+
   # ─── Identity & SSO Service (layered N-tier app) ───
   identity-service:
     build:
@@ -63,6 +81,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-local-internal-api-key}
       REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://rabbitmq:5672
     ports:
       - "3001:3000"
     volumes:
@@ -73,12 +92,40 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - identity-network
+
+  # ─── Outbox Worker ──────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: identity-worker
+    restart: unless-stopped
+    command: npm run worker
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password}@postgres:5432/${AUTH_DB_NAME:-auth_db}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password}@postgres:5432/${AUTH_DB_NAME:-auth_db}?schema=public
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - identity-network
 
 # ─── Volumes ──────────────────────────────────
 volumes:
   postgres_data:
+    driver: local
+  rabbitmq_data:
     driver: local
 
 # ─── Networks ─────────────────────────────────

@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { prisma } from "../models/prisma";
 import { refreshTokenRepository } from "../repositories/refreshToken.repository";
 import { userOAuthAccountRepository } from "../repositories/userOAuthAccount.repository";
 import { userRepository } from "../repositories/user.repository";
@@ -8,7 +9,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "../types/errors";
-import { logAuditEvent } from "../utils/audit";
+import { emitEvent } from "../utils/events";
 import { verifyGoogleIdToken } from "../utils/googleOAuth";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
 import { parseExpiresToMs } from "../utils/time";
@@ -41,25 +42,14 @@ export const googleAuthService = {
       throw new UnauthorizedError("Google account email is not verified");
     }
 
+    // All reads + conflict checks before opening the transaction
     const oauthAccount = await userOAuthAccountRepository.findByProviderAccount(
       GOOGLE_PROVIDER,
       googleUser.subject,
     );
     const existing = oauthAccount?.user ?? (await userRepository.findByEmail(googleUser.email));
-    let user;
 
-    if (!existing) {
-      user = await userRepository.create({
-        name: googleUser.name,
-        email: googleUser.email,
-        role: resolveOAuthRole(googleUser.email),
-      });
-      await userOAuthAccountRepository.create({
-        user: { connect: { id: user.id } },
-        provider: GOOGLE_PROVIDER,
-        providerId: googleUser.subject,
-      });
-    } else if (!oauthAccount) {
+    if (existing && !oauthAccount) {
       const linkedGoogleAccount = await userOAuthAccountRepository.findByUserAndProvider(
         existing.id,
         GOOGLE_PROVIDER,
@@ -67,43 +57,71 @@ export const googleAuthService = {
       if (linkedGoogleAccount) {
         throw new ConflictError("Email is already linked to another Google account");
       }
-
-      user = await userRepository.update(existing.id, {
-        name: existing.name || googleUser.name,
-      });
-      await userOAuthAccountRepository.create({
-        user: { connect: { id: user.id } },
-        provider: GOOGLE_PROVIDER,
-        providerId: googleUser.subject,
-      });
-    } else {
-      user = existing;
     }
 
-    if (!user.isActive) {
+    if (existing && !existing.isActive) {
       throw new UnauthorizedError("Invalid credentials or account is inactive");
     }
 
-    const accessToken = generateAccessToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
-    const refreshToken = generateRefreshToken({ id: user.id });
+    const accessToken_gen = (user: { id: string; name: string; email: string; role: AppRole }) =>
+      generateAccessToken({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const refreshTokenValue = generateRefreshToken({ id: existing?.id ?? "pending" });
 
-    await refreshTokenRepository.create({
-      userId: user.id,
-      token: refreshToken,
-      expiresAt: new Date(Date.now() + parseExpiresToMs(config.jwt.refreshExpiresIn)),
+    // One transaction: all writes + outbox insert
+    const user = await prisma.$transaction(async (tx) => {
+      let u;
+      if (!existing) {
+        u = await userRepository.create(
+          { name: googleUser.name, email: googleUser.email, role: resolveOAuthRole(googleUser.email) },
+          tx,
+        );
+        await userOAuthAccountRepository.create(
+          { user: { connect: { id: u.id } }, provider: GOOGLE_PROVIDER, providerId: googleUser.subject },
+          tx,
+        );
+      } else if (!oauthAccount) {
+        u = await userRepository.update(
+          existing.id,
+          { name: existing.name || googleUser.name },
+          tx,
+        );
+        await userOAuthAccountRepository.create(
+          { user: { connect: { id: u.id } }, provider: GOOGLE_PROVIDER, providerId: googleUser.subject },
+          tx,
+        );
+      } else {
+        u = existing;
+      }
+
+      const finalRefreshToken = generateRefreshToken({ id: u.id });
+      await refreshTokenRepository.create(
+        {
+          userId: u.id,
+          token: finalRefreshToken,
+          expiresAt: new Date(Date.now() + parseExpiresToMs(config.jwt.refreshExpiresIn)),
+        },
+        tx,
+      );
+      await emitEvent(tx, {
+        eventType: "LOGIN_SUCCESS",
+        userId: u.id,
+        ...ctx,
+        metadata: { provider: GOOGLE_PROVIDER },
+      });
+
+      return { user: u, refreshToken: finalRefreshToken };
     });
 
-    await logAuditEvent({
-      action: "LOGIN_SUCCESS",
-      userId: user.id,
-      ...ctx,
-      metadata: { provider: GOOGLE_PROVIDER },
-    });
+    if (!user.user.isActive) {
+      throw new UnauthorizedError("Invalid credentials or account is inactive");
+    }
 
-    return { accessToken, refreshToken, user: stripPassword(user) };
+    const accessToken = accessToken_gen(user.user);
+
+    return {
+      accessToken,
+      refreshToken: user.refreshToken,
+      user: stripPassword(user.user),
+    };
   },
 };

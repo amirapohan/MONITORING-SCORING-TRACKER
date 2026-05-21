@@ -46,6 +46,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.outboxEvent.deleteMany({});
+  await prisma.auditLog.deleteMany({});
   await prisma.userOAuthAccount.deleteMany({
     where: { providerId: { startsWith: `google-subject-${uniqueId}` } },
   });

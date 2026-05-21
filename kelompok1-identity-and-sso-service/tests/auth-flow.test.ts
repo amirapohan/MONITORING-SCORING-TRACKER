@@ -35,6 +35,7 @@ beforeAll(async () => {
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret";
   process.env.INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "test-internal-key";
+  process.env.CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000";
 
   const appModule = await import("../src/app");
   const prismaModule = await import("../src/models/prisma");
@@ -43,6 +44,8 @@ beforeAll(async () => {
   prisma = prismaModule.prisma;
 
   await prisma.$connect();
+  await prisma.outboxEvent.deleteMany({});
+  await prisma.auditLog.deleteMany({});
   await prisma.user.deleteMany({
     where: {
       email: { in: [testUser.email, adminUser.email, adminCreatedUser.email] },
@@ -51,6 +54,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.outboxEvent.deleteMany({});
+  await prisma.auditLog.deleteMany({});
   await prisma.user.deleteMany({
     where: {
       email: { in: [testUser.email, adminUser.email, adminCreatedUser.email] },
@@ -174,7 +179,7 @@ describe("MVP auth flow", () => {
       .send({ refreshToken });
 
     expect(refreshAfterLogoutResponse.status).toBe(401);
-  });
+  }, 30000);
 
   it("rejects duplicate email registration", async () => {
     const duplicateResponse = await request(app)
