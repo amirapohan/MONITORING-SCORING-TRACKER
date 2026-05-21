@@ -1,7 +1,7 @@
 const express = require('express')
 const projectController = require('../controllers/project.controller')
 const authMiddleware = require('../../../middleware/auth.middleware')
-const db = require('../../../../config/db')
+const db = require('../../../config/db')
 
 const router = express.Router()
 
