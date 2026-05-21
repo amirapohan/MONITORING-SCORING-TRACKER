@@ -2,6 +2,7 @@ const appName = 'team-matching-service';
 const config = require('./config/database');
 const prisma = require('./core/prisma');
 const rabbitmq = require('./utils/rabbitmq');
+const { startIdentityConsumer } = require('./consumers/identityConsumer');
 
 async function main() {
   console.log(`${appName} is running.`);
@@ -19,6 +20,7 @@ async function main() {
 
   try {
     await rabbitmq.connect();
+    await startIdentityConsumer();
   } catch (error) {
     console.warn('[RabbitMQ] Connection failed, events will be unavailable:', error.message);
   }

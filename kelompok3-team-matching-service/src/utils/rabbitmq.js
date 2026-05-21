@@ -101,10 +101,45 @@ async function close() {
   }
 }
 
+async function subscribe(exchange, exchangeType, queueName, routingKeys, handler) {
+  const connection = await getConnection();
+  const channel = await connection.createChannel();
+
+  await channel.assertExchange(exchange, exchangeType, { durable: true });
+  await channel.assertQueue(queueName, { durable: true });
+
+  for (const key of routingKeys) {
+    await channel.bindQueue(queueName, exchange, key);
+  }
+
+  await channel.prefetch(10);
+
+  await channel.consume(queueName, async (msg) => {
+    if (!msg) return;
+    let payload;
+    try {
+      payload = JSON.parse(msg.content.toString());
+    } catch {
+      channel.nack(msg, false, false);
+      return;
+    }
+    try {
+      await handler(payload);
+      channel.ack(msg);
+    } catch (err) {
+      console.error(`[RabbitMQ] consumer error on ${queueName}:`, err.message);
+      channel.nack(msg, false, true);
+    }
+  });
+
+  console.log(`[RabbitMQ] Subscribed — exchange: ${exchange}, queue: ${queueName}`);
+}
+
 module.exports = {
   buildRoutingKey,
   getConfig,
   publishEvent,
+  subscribe,
   connect,
   close,
 };
