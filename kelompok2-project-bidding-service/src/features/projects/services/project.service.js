@@ -124,7 +124,7 @@ const normalizeCreatePayload = (payload) => {
 
   const mitraId = projectPayload.mitra_id === undefined || projectPayload.mitra_id === null
     ? null
-    : parsePositiveInteger(projectPayload.mitra_id, 'mitra_id', errors)
+    : getRequiredString(projectPayload, 'mitra_id', errors)
 
   if (projectPayload.mitra_id === undefined || projectPayload.mitra_id === null) {
     errors.push('mitra_id is required')

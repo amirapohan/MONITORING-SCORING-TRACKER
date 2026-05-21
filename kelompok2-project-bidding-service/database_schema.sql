@@ -18,7 +18,7 @@ CREATE TYPE user_role_enum AS ENUM ('talent', 'client', 'admin');
 
 -- 2. Tabel Mitra (Pemilik Proyek)
 CREATE TABLE mitra (
-    mitra_id SERIAL PRIMARY KEY,
+    mitra_id VARCHAR(50) PRIMARY KEY,
     nama_mitra VARCHAR(255) NOT NULL,
     kontak_mitra VARCHAR(255) NOT NULL
 );
@@ -26,7 +26,7 @@ CREATE TABLE mitra (
 -- 3. Tabel Proyek
 CREATE TABLE proyek (
     proyek_id SERIAL PRIMARY KEY,
-    mitra_id INT NOT NULL,
+    mitra_id VARCHAR(50) NOT NULL,
     judul_proyek VARCHAR(255) NOT NULL,
     deskripsi_proyek TEXT NOT NULL,
     skills project_skill_enum[] NOT NULL,
