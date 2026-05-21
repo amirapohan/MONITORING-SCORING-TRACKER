@@ -29,16 +29,6 @@ services:
     volumes:
       - mongodb_data:/data/db
 
-  redis:
-    image: redis:7
-    container_name: redis-container
-
-    ports:
-      - "6379:6379"
-
-    volumes:
-      - redis_data:/data
-
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: pgadmin-container
