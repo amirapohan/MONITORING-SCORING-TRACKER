@@ -17,7 +17,7 @@ app.get('/', (req, res) => {
 })
 
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', service: 'bidding' })
+  res.status(200).json({ status: 'ok', service: 'bidding', version: 'v2-route-fix' })
 })
 
 // Temporary migration endpoint to fix database schema
