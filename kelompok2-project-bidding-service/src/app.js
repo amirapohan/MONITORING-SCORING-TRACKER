@@ -9,7 +9,7 @@ const biddingRoute = require('./features/bidding/routes/bidding.routes')
 const negotiatingRoute = require('./features/negotiating/routes/negotiating.routes')
 
 app.use('/api/projects', projectsRoute)
-app.use('/api/bidding', biddingRoute)
+app.use('/api/bids', biddingRoute)
 app.use('/api/negotiating', negotiatingRoute)
 
 app.get('/', (req, res) => {
