@@ -21,7 +21,7 @@ app.get('/health', (req, res) => {
 })
 
 // Temporary migration endpoint to fix database schema
-app.get('/migrate', async (req, res) => {
+app.get('/api/migrate', async (req, res) => {
   const results = []
   try {
     // 1. Create enum types if they don't exist
