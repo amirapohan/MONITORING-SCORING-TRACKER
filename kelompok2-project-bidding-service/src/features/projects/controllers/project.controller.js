@@ -44,6 +44,10 @@ const createProject = async (req, res) => {
       ...req.body,
       mitra_id: req.user.id 
     }
+    
+    // AUTO-INSERT MITRA to satisfy foreign key constraint
+    // Kelompok 2 previously expected mitra to be pre-seeded, but with Identity integration we must auto-seed
+    await projectService.ensureMitraExists(req.user.id, req.user.name || 'Unknown Client', req.user.email || 'unknown@client.com');
 
     const project = await projectService.createProject(payload)
 

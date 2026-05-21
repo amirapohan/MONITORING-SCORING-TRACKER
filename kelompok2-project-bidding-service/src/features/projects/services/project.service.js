@@ -200,6 +200,10 @@ const normalizeUpdatePayload = (payload, currentProject) => {
   }
 }
 
+const ensureMitraExists = async (mitraId, namaMitra, kontakMitra) => {
+  return projectRepository.ensureMitraExists(mitraId, namaMitra, kontakMitra)
+}
+
 const createProject = async (payload) => {
   const projectData = normalizeCreatePayload(payload)
 
@@ -251,5 +255,6 @@ module.exports = {
   getProjects,
   getProjectById,
   updateProject,
-  deleteProject
+  deleteProject,
+  ensureMitraExists
 }

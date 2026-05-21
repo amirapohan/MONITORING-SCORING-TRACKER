@@ -31,6 +31,15 @@ const create = async (projectData) => {
   return result.rows[0]
 }
 
+const ensureMitraExists = async (mitraId, namaMitra, kontakMitra) => {
+  const sql = `
+    INSERT INTO mitra (mitra_id, nama_mitra, kontak_mitra)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (mitra_id) DO NOTHING
+  `
+  await db.query(sql, [mitraId, namaMitra, kontakMitra])
+}
+
 const findAll = async () => {
   const sql = `
     SELECT *
@@ -99,5 +108,6 @@ module.exports = {
   findAll,
   findById,
   update,
-  remove
+  remove,
+  ensureMitraExists
 }
