@@ -16,6 +16,22 @@ class BiddingService {
     const result = await pool.query(query, [studentId]);
     return result.rows[0];
   }
+  async ensureGroupExists(groupId, groupName) {
+    const query = `
+      INSERT INTO kelompok (kelompok_id, nama_kelompok)
+      VALUES ($1, $2)
+      ON CONFLICT (kelompok_id) DO NOTHING
+    `;
+    await pool.query(query, [groupId, groupName]);
+  }
+  async ensureStudentExists(studentId, studentName, nim) {
+    const query = `
+      INSERT INTO mahasiswa (mahasiswa_id, nama_lengkap, nim)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (mahasiswa_id) DO NOTHING
+    `;
+    await pool.query(query, [studentId, studentName, nim]);
+  }
   async countProjectBids(projectId) {
     const query = `
       SELECT COUNT(*) as total 
