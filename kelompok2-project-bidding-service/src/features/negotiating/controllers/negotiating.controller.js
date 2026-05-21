@@ -4,6 +4,10 @@ const trackerService = require('../../../utils/tracker');
 const { getDigitCount } = require('../../../helper_function/functions');
 const { responseSuccess, responseError } = require('../../../utils/response');
 
+const isProjectOwner = (project, userId) => (
+  String(project.mitra_id) === String(userId)
+);
+
 class NegotiatingController {
   async createNegotiation(req, res) {
     try {
@@ -24,23 +28,23 @@ class NegotiatingController {
         return responseError(res, 'Bid not found', 404, 'BID_NOT_FOUND');
       }
 
-      // PERUBAHAN: Ambil data project untuk mengecek kepemilikan Mitra
+      // PERUBAHAN: Ambil data project untuk mengecek kepemilikan client
       const project = await negotiatingService.getProjectDetails(bid.proyek_id);
 
       // PERUBAHAN: Tentukan role otomatis dan RBAC Ownership Check
       let role_;
-      if (userType === 'mitra') {
-        if (String(project.mitra_id) !== String(userId)) {
+      if (userType === 'client') {
+        if (!isProjectOwner(project, userId)) {
           return responseError(res, 'Unauthorized: Ini bukan proyek Anda', 403, 'FORBIDDEN');
         }
-        role_ = 'Mitra';
+        role_ = 'client';
       } else if (userType === 'talent') {
-        if (String(bid.kelompok_id) !== String(userId)) {
+        if (bid.kelompok_id !== userId) {
           return responseError(res, 'Unauthorized: Ini bukan bid kelompok Anda', 403, 'FORBIDDEN');
         }
-        role_ = 'Kelompok';
+        role_ = 'talent';
       } else {
-        return responseError(res, 'Invalid user type', 403, 'FORBIDDEN');
+        return responseError(res, 'Admin tidak bisa membuat negosiasi sebagai pihak proyek/bid', 403, 'FORBIDDEN');
       }
 
       // Validation: response_harga must be positive number
@@ -188,24 +192,26 @@ class NegotiatingController {
       const project = await negotiatingService.getProjectDetails(bid.proyek_id);
 
       // --- TANTANGAN 1: RBAC & Mencegah "Jeruk Makan Jeruk" ---
-      if (userType === 'mitra') {
+      if (userType === 'client') {
         // Cek kepemilikan proyek
-        if (String(project.mitra_id) !== String(userId)) {
+        if (!isProjectOwner(project, userId)) {
           return responseError(res, 'Unauthorized untuk proyek ini', 403, 'FORBIDDEN');
         }
-        // Pastikan Mitra hanya menjawab tawaran dari Kelompok
-        if (nego.role_ === 'Mitra') {
+        // Pastikan client hanya menjawab tawaran dari talent
+        if (nego.role_ === 'client') {
           return responseError(res, 'Anda tidak bisa merespons tawaran Anda sendiri', 403, 'FORBIDDEN');
         }
       } else if (userType === 'talent') {
         // Cek kepemilikan bid
-        if (String(bid.kelompok_id) !== String(userId)) {
+        if (bid.kelompok_id !== userId) {
           return responseError(res, 'Unauthorized untuk bid ini', 403, 'FORBIDDEN');
         }
-        // Pastikan Talent hanya menjawab tawaran dari Mitra
-        if (nego.role_ === 'Kelompok') {
+        // Pastikan talent hanya menjawab tawaran dari client
+        if (nego.role_ === 'talent') {
           return responseError(res, 'Anda tidak bisa merespons tawaran Anda sendiri', 403, 'FORBIDDEN');
         }
+      } else if (userType !== 'admin') {
+        return responseError(res, 'Invalid user type', 403, 'FORBIDDEN');
       }
 
       // Update negotiation status di tabel negosiasi
@@ -222,7 +228,7 @@ class NegotiatingController {
         );
         
         // Trigger notification ke pihak lawan
-        const targetId = userType === 'mitra' ? bid.kelompok_id : project.mitra_id;
+        const targetId = userType === 'client' ? bid.kelompok_id : project.mitra_id;
         await notificationService.sendDealConfirmed(targetId, project.judul_proyek);
 
         // 👈 PERUBAHAN 2: TRIGGER TRACKER (Kelompok 4)

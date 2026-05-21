@@ -1,7 +1,20 @@
--- 1. Buat ENUM untuk tipe status agar data konsisten
+
 CREATE TYPE status_proyek_enum AS ENUM ('Open', 'Full', 'Closed');
 -- Tambahkan 'Queued' ke dalam ENUM
 CREATE TYPE status_bid_enum AS ENUM ('Pending', 'Accepted', 'Rejected', 'Queued');
+CREATE TYPE project_skill_enum AS ENUM (
+    'Frontend',
+    'Backend',
+    'UI/UX',
+    'Mobile',
+    'Database',
+    'DevOps',
+    'Data Science',
+    'Machine Learning',
+    'Cybersecurity',
+    'QA Testing'
+);
+CREATE TYPE user_role_enum AS ENUM ('talent', 'client', 'admin');
 
 -- 2. Tabel Mitra (Pemilik Proyek)
 CREATE TABLE mitra (
@@ -16,6 +29,7 @@ CREATE TABLE proyek (
     mitra_id INT NOT NULL,
     judul_proyek VARCHAR(255) NOT NULL,
     deskripsi_proyek TEXT NOT NULL,
+    skills project_skill_enum[] NOT NULL,
     requirements TEXT,          -- berupa opsi gitu
     kuota_maksimal INT NOT NULL DEFAULT 1,
     budget_awal DECIMAL(15, 2) NOT NULL,
@@ -71,7 +85,7 @@ CREATE TABLE negosiasi(
     bid_id INT NOT NULL,
     response_harga DECIMAL(15, 2) NOT NULL,
     response_waktu DATE NOT NULL,
-    role_ VARCHAR(10) NOT NULL CHECK(role_ IN ('Mitra', 'Kelompok')),
+    role_ user_role_enum NOT NULL,
     status status_nego_enum DEFAULT 'Pending', -- 👈 INI TAMBAHANNYA
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_bid FOREIGN KEY(bid_id) REFERENCES bid(bid_id)  
