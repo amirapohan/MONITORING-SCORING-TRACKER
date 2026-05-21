@@ -1,18 +1,3 @@
-/**
- * Auth Middleware
- * 
- * Middleware ini melakukan:
- * 1. Validasi Bearer token ke Identity/SSO service jika tersedia
- * 2. Fallback extract user info dari request headers
- * 3. Attach info ke req.user untuk digunakan di controller/service
- * 
- * Expected Headers:
- * - Authorization: Bearer token dari Identity/SSO service
- * atau fallback:
- * - X-User-ID: ID dari user (mahasiswa_id, mitra_id/client_id, atau admin_id)
- * - X-User-Type: Tipe user ('talent', 'client'/'mitra', atau 'admin')
- */
-
 const authInternalUrl = () => (
   process.env.AUTH_INTERNAL_URL ||
   process.env.AUTH_SERVICE_URL ||
@@ -67,39 +52,28 @@ const authMiddleware = async (req, res, next) => {
       req.user = await verifyBearerToken(bearerMatch[1].trim());
       return next();
     }
-
-    // Extract dari header (case-insensitive di Express)
     const userId = req.headers['x-user-id'];
     const userType = req.headers['x-user-type'];
-
-    // Validasi: kedua field harus ada
     if (!userId || !userType) {
-      return res.status(401).json({   // 401 = Unauthorized
+      return res.status(401).json({
         success: false,
         message: 'Missing required headers: X-User-ID and X-User-Type',
         code: 'MISSING_AUTH_HEADERS'
       });
     }
-
-    // Validasi: user_type harus talent, client/mitra, atau admin
     const normalizedUserType = normalizeUserType(userType);
     const validUserTypes = ['talent', 'client', 'admin'];
     if (!validUserTypes.includes(normalizedUserType)) {
-      return res.status(400).json({    // 400 = Bad Request
+      return res.status(400).json({
         success: false,
         message: 'Invalid X-User-Type. Must be "talent", "client"/"mitra", or "admin"',
         code: 'INVALID_USER_TYPE'
       });
     }
-
-    // Attach user info ke request object
-    // Ini bisa diakses di controller dengan: req.user.id, req.user.type
     req.user = {
       id: String(userId),
       type: normalizedUserType
     };
-
-    // Lanjut ke middleware/controller berikutnya
     next();
 
   } catch (error) {

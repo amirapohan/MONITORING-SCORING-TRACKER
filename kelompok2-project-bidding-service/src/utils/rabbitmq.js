@@ -75,10 +75,8 @@ const publishMessage = async (queueName, data) => {
       await connectRabbitMQ();
     }
     
-    // Pastikan nama antrean siap
     await channel.assertQueue(queueName, { durable: true });
     
-    // Kirim data dalam bentuk Buffer (syarat wajib RabbitMQ)
     const messageBuffer = Buffer.from(JSON.stringify(data));
     channel.sendToQueue(queueName, messageBuffer, { persistent: true });
     

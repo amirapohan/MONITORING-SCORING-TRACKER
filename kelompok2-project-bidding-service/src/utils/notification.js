@@ -1,6 +1,27 @@
 const { publishEvent } = require('./rabbitmq');
 
 const notificationService = {
+  async sendProjectCreated(project, client) {
+    try {
+      const payload = {
+        project_id: project.proyek_id,
+        project_title: project.judul_proyek,
+        client_id: project.mitra_id,
+        client_name: client?.name,
+        email: client?.email,
+        status: 'CREATED',
+        notification_type: 'PROJECT_CREATED'
+      };
+
+      const success = await publishEvent('project_created', payload);
+      if (success) return { success: true };
+      throw new Error('Failed to publish message');
+    } catch (error) {
+      console.warn('Notification service unavailable:', error.message);
+      return { success: false, error: error.message };
+    }
+  },
+
   async sendBidStatusUpdate(userId, status, projectTitle) {
     try {
       const payload = {

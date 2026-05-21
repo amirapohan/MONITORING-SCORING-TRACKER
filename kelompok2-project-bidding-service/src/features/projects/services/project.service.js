@@ -211,7 +211,6 @@ const createProject = async (payload) => {
 }
 
 const getProjects = async (queryFilters = {}) => {
-  // Teruskan query parameter dari controller ke repository
   return projectRepository.findAll(queryFilters)
 }
 

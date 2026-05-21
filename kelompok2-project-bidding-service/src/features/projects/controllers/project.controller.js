@@ -1,4 +1,5 @@
 const projectService = require('../services/project.service')
+const notificationService = require('../../../utils/notification')
 
 const isProjectOwner = (project, userId) => (
   String(project.mitra_id) === String(userId)
@@ -33,23 +34,23 @@ const sendErrorResponse = (res, error) => {
 
 const createProject = async (req, res) => {
   try {
-    // RBAC Lapis 1: Hanya role 'client' yang boleh membuat proyek
     if (req.user.type !== 'client') {
       return res.status(403).json({ message: 'Forbidden: Hanya client yang dapat membuat proyek' })
     }
 
-    // SECURITY PATCH: Paksa mitra_id menggunakan ID dari auth client
-    // Jangan pernah percaya mitra_id dari input user (req.body)
     const payload = {
       ...req.body,
       mitra_id: req.user.id 
     }
     
-    // AUTO-INSERT MITRA to satisfy foreign key constraint
-    // Kelompok 2 previously expected mitra to be pre-seeded, but with Identity integration we must auto-seed
     await projectService.ensureMitraExists(req.user.id, req.user.name || 'Unknown Client', req.user.email || 'unknown@client.com');
 
     const project = await projectService.createProject(payload)
+    await notificationService.sendProjectCreated(project, {
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email
+    })
 
     return res.status(201).json({
       message: 'Project created successfully',
@@ -62,21 +63,16 @@ const createProject = async (req, res) => {
 
 const getProjects = async (req, res) => {
   try {
-    // 1. Ambil query parameter
     const { status, mitra_id, search, budget_min, budget_max } = req.query;
 
-    // 2. Buat objek filter dan lakukan parsing tipe data yang aman
     const filters = {
       search: typeof search === 'string' ? search.trim() : undefined,
       status_proyek: typeof status === 'string' ? status.trim() : undefined,
-      
-      // Pastikan ID dan Budget di-convert menjadi angka (atau null/undefined jika kosong)
       mitra_id: mitra_id ? Number(mitra_id) : undefined,
       budget_min: budget_min ? Number(budget_min) : undefined,
       budget_max: budget_max ? Number(budget_max) : undefined
     };
 
-    // 3. Validasi dasar: Jika user memasukkan sesuatu yang bukan angka pada field numerik
     if (
       (mitra_id && isNaN(filters.mitra_id)) ||
       (budget_min && isNaN(filters.budget_min)) ||
@@ -88,7 +84,6 @@ const getProjects = async (req, res) => {
       });
     }
 
-    // 4. Jalankan service dengan filter yang sudah bersih
     const projects = await projectService.getProjects(filters);
 
     return res.status(200).json({
@@ -115,15 +110,12 @@ const getProjectById = async (req, res) => {
 
 const updateProject = async (req, res) => {
   try {
-    // RBAC Lapis 1: Cek tipe user
     if (!['client', 'admin'].includes(req.user.type)) {
       return res.status(403).json({ message: 'Forbidden: Hanya client atau admin yang dapat mengupdate proyek' })
     }
 
-    // Dapatkan data proyek saat ini untuk mengecek kepemilikan
     const currentProject = await projectService.getProjectById(req.params.id)
 
-    // RBAC Lapis 2: Cek apakah client ini adalah pemilik sah dari proyek tersebut
     if (req.user.type === 'client' && !isProjectOwner(currentProject, req.user.id)) {
       return res.status(403).json({ message: 'Forbidden: Anda tidak memiliki akses untuk mengubah proyek ini' })
     }
@@ -135,22 +127,18 @@ const updateProject = async (req, res) => {
       data: project
     })
   } catch (error) {
-    // Tangani error jika getProjectById tidak menemukan data (404)
     return sendErrorResponse(res, error)
   }
 }
 
 const deleteProject = async (req, res) => {
   try {
-    // RBAC Lapis 1: Cek tipe user
     if (!['client', 'admin'].includes(req.user.type)) {
       return res.status(403).json({ message: 'Forbidden: Hanya client atau admin yang dapat menghapus proyek' })
     }
 
-    // Dapatkan data proyek saat ini untuk mengecek kepemilikan
     const currentProject = await projectService.getProjectById(req.params.id)
 
-    // RBAC Lapis 2: Cek kepemilikan
     if (req.user.type === 'client' && !isProjectOwner(currentProject, req.user.id)) {
       return res.status(403).json({ message: 'Forbidden: Anda tidak memiliki akses untuk menghapus proyek ini' })
     }

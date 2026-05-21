@@ -1,14 +1,11 @@
 const pool = require('../../../config/db');
 
 class NegotiatingService {
-  // Check if bid exists and get its details (fixed typo: getBitDetails → getBidDetails)
   async getBidDetails(bidId) {
     const query = 'SELECT * FROM bid WHERE bid_id = $1';
     const result = await pool.query(query, [bidId]);
     return result.rows[0];
   }
-
-  // Create a new negotiation (fixed typo: bit_Id → bid_id)
   async createNegotiation(negotiationData) {
     const { bid_id, response_harga, response_waktu, role_ } = negotiationData;
 
@@ -27,12 +24,8 @@ class NegotiatingService {
 
     return result.rows[0];
   }
-
-  // Delete a negotiation by id (fixed: checkArr.rows bug — getNegotiationsByBidId already returns rows)
   async deleteNegotiation(negotiationId, bidId) {
     const query = 'DELETE FROM negosiasi WHERE nego_id = $1 RETURNING *';
-
-    // Check if there is a negotiation from opposite role before deleting
     const negotiations = await this.getNegotiationsByBidId(bidId);
     const negoToDelete = negotiations.find(nego => nego.nego_id === negotiationId);
 
@@ -44,8 +37,6 @@ class NegotiatingService {
     const hasOppositeRole = negotiations.some(nego => nego.role_ === oppositeRole);
 
     if (hasOppositeRole) {
-      // Check if the most recent negotiation is from the opposite role
-      // If so, we can't delete because they already replied
       if (negotiations[0].role_ === oppositeRole) {
         throw new Error(`Cannot delete: ${oppositeRole} has already replied to this negotiation.`);
       }
@@ -54,8 +45,6 @@ class NegotiatingService {
     const deleteResult = await pool.query(query, [negotiationId]);
     return deleteResult.rows[0];
   }
-
-  // Get all negotiations (NEW — was placeholder before)
   async getAllNegotiations() {
     const query = `
       SELECT n.*, b.proyek_id, b.kelompok_id, b.status_bid
@@ -66,15 +55,11 @@ class NegotiatingService {
     const result = await pool.query(query);
     return result.rows;
   }
-
-  // Get a negotiation by its ID
   async getNegotiationById(negoId) {
     const query = 'SELECT * FROM negosiasi WHERE nego_id = $1';
     const result = await pool.query(query, [negoId]);
     return result.rows[0];
   }
-
-  // Update negotiation status (accept/reject counter-offer)
   async updateNegotiationStatus(negoId, status) {
     const query = `
       UPDATE negosiasi 
@@ -85,13 +70,9 @@ class NegotiatingService {
     const result = await pool.query(query, [status, negoId]);
     return result.rows[0];
   }
-
-  // Update bid status final & sinkronisasi harga/waktu deal
   async updateBidStatusFinal(bidId, status, finalHarga = null, finalWaktu = null) {
     let query;
     let params;
-
-    // Jika deal (Accepted) dan ada nominal/waktu baru, update semuanya
     if (status === 'Accepted' && finalHarga !== null && finalWaktu !== null) {
       query = `
         UPDATE bid 
@@ -101,7 +82,6 @@ class NegotiatingService {
       `;
       params = [status, finalHarga, finalWaktu, bidId];
     } else {
-      // Jika hanya merubah status (misal: ditolak/Rejected)
       query = `
         UPDATE bid 
         SET status_bid = $1
@@ -114,8 +94,6 @@ class NegotiatingService {
     const result = await pool.query(query, params);
     return result.rows[0];
   }
-
-  // Get project details (for RBAC check)
   async getProjectDetails(projectId) {
     const query = 'SELECT * FROM proyek WHERE proyek_id = $1';
     const result = await pool.query(query, [projectId]);

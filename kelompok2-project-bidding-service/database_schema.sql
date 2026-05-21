@@ -86,7 +86,7 @@ CREATE TABLE negosiasi(
     response_harga DECIMAL(15, 2) NOT NULL,
     response_waktu DATE NOT NULL,
     role_ user_role_enum NOT NULL,
-    status status_nego_enum DEFAULT 'Pending', -- 👈 INI TAMBAHANNYA
+    status status_nego_enum DEFAULT 'Pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_bid FOREIGN KEY(bid_id) REFERENCES bid(bid_id)  
 );
