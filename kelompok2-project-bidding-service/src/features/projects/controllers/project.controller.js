@@ -28,7 +28,9 @@ const sendErrorResponse = (res, error) => {
   console.error(error)
 
   return res.status(500).json({
-    message: 'Internal server error'
+    message: 'Internal server error',
+    debug_error: error.message,
+    debug_stack: (error.stack || '').split('\n').slice(0, 3)
   })
 }
 
