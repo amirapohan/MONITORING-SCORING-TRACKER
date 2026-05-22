@@ -20,7 +20,6 @@
 # ============================================================
 
 services:
-
   # ---------- API GATEWAY ----------
   gateway:
     image: nginx:alpine
@@ -88,7 +87,12 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
       REDIS_URL: redis://redis-main:6379
     # dev target CMD does not migrate; apply migrations before starting.
-    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma generate && npm run dev"]
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma migrate deploy && npx prisma generate && npm run dev",
+      ]
     depends_on:
       db-auth: { condition: service_healthy }
       redis-main: { condition: service_healthy }
@@ -225,15 +229,14 @@ services:
       RABBITMQ_ROUTING_PREFIX: tracker
       AUTH_INTERNAL_URL: http://svc-auth:8080
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-documents}
+
     depends_on:
       db-audit: { condition: service_healthy }
       redis-main: { condition: service_healthy }
       rabbit-main: { condition: service_healthy }
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/v1/health || exit 1"]
+      test:
+        ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/v1/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
