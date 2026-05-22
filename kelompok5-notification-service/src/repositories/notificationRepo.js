@@ -18,3 +18,7 @@ export async function saveLog(event, result) {
 
   console.log("Log tersimpan:", logs);
 }
+
+export async function getLogs() {
+  return logs;
+}
