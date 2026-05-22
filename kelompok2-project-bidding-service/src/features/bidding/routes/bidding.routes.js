@@ -1,12 +1,10 @@
 const express = require('express')
 const router = express.Router()
 const biddingController = require('../controllers/bidding.controller')
-
-router.post('/', biddingController.createBid)
-
-router.get('/:id', (req,res) => {
-    const id = req.params.id
-    res.send(`ini adalah bidding ${id}`)
-})
+const authMiddleware = require('../../../middleware/auth.middleware')
+router.get('/', authMiddleware, biddingController.getBids)
+router.get('/:id', authMiddleware, biddingController.getBidById)
+router.post('/', authMiddleware, biddingController.createBid)
+router.put('/:id/status', authMiddleware, biddingController.updateBidStatus)
 
 module.exports = router

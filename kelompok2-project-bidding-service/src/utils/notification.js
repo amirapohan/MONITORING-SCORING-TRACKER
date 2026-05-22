@@ -1,18 +1,37 @@
-const { publishMessage } = require('./rabbitmq');
+const { publishEvent } = require('./rabbitmq');
 
 const notificationService = {
-  async sendBidStatusUpdate(userId, status, projectTitle) {
+  async sendProjectCreated(project, client) {
     try {
-      const queueName = 'notification_queue';
       const payload = {
-        notification_type: 'BID_STATUS_UPDATE',
-        recipient_id: userId,
-        status: status,
-        project_title: projectTitle,
-        timestamp: new Date().toISOString()
+        project_id: project.proyek_id,
+        project_title: project.judul_proyek,
+        client_id: project.mitra_id,
+        client_name: client?.name,
+        email: client?.email,
+        status: 'CREATED',
+        notification_type: 'PROJECT_CREATED'
       };
 
-      const success = await publishMessage(queueName, payload);
+      const success = await publishEvent('project_created', payload);
+      if (success) return { success: true };
+      throw new Error('Failed to publish message');
+    } catch (error) {
+      console.warn('Notification service unavailable:', error.message);
+      return { success: false, error: error.message };
+    }
+  },
+
+  async sendBidStatusUpdate(userId, status, projectTitle) {
+    try {
+      const payload = {
+        user_id: userId,
+        status: status,
+        project_title: projectTitle,
+        notification_type: 'BID_STATUS_UPDATE'
+      };
+
+      const success = await publishEvent('bid_status_updated', payload);
       if (success) return { success: true };
       throw new Error('Failed to publish message');
     } catch (error) {
@@ -23,15 +42,14 @@ const notificationService = {
 
   async sendDealConfirmed(userId, projectTitle) {
     try {
-      const queueName = 'notification_queue';
       const payload = {
-        notification_type: 'DEAL_CONFIRMED',
-        recipient_id: userId,
+        user_id: userId,
+        status: 'ACCEPTED',
         project_title: projectTitle,
-        timestamp: new Date().toISOString()
+        notification_type: 'DEAL_CONFIRMED'
       };
 
-      const success = await publishMessage(queueName, payload);
+      const success = await publishEvent('bid_deal_confirmed', payload);
       if (success) return { success: true };
       throw new Error('Failed to publish message');
     } catch (error) {
@@ -42,16 +60,15 @@ const notificationService = {
 
   async sendCounterOfferNotification(userId, projectTitle, counterOffer) {
     try {
-      const queueName = 'notification_queue';
       const payload = {
-        notification_type: 'COUNTER_OFFER',
-        recipient_id: userId,
+        user_id: userId,
+        status: 'COUNTERED',
         project_title: projectTitle,
         counter_offer_details: counterOffer,
-        timestamp: new Date().toISOString()
+        notification_type: 'COUNTER_OFFER'
       };
 
-      const success = await publishMessage(queueName, payload);
+      const success = await publishEvent('bid_counter_offered', payload);
       if (success) return { success: true };
       throw new Error('Failed to publish message');
     } catch (error) {

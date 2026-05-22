@@ -1,9 +1,14 @@
-const app= require('express')
-const router= app.Router()
+const express = require('express')
+const projectController = require('../controllers/project.controller')
+const authMiddleware = require('../../../middleware/auth.middleware')
 
-router.get('/:id', (req,res) => {
-    const id = req.params.id
-    res.send(`this is ${id} project`)
-})
+const router = express.Router()
+
+router.get('/', projectController.getProjects)
+router.get('/:id', projectController.getProjectById)
+router.post('/', authMiddleware, projectController.createProject)
+router.put('/:id', authMiddleware, projectController.updateProject)
+router.delete('/:id', authMiddleware, projectController.deleteProject)
 
 module.exports = router
+

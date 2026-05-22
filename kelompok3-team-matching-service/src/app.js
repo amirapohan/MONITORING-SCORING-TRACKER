@@ -11,7 +11,7 @@ const app = express();
 app.use(express.json());
 
 // Public health check
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'team-matching', version: 'v4-student-name' }));
 
 // Protected example route
 app.get('/me', auth, (req, res) => {

@@ -86,6 +86,7 @@ services:
       JWT_REFRESH_EXPIRES: 7d
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
       REDIS_URL: redis://redis-main:6379
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
     # dev target CMD does not migrate; apply migrations before starting.
     command:
       [
@@ -134,10 +135,17 @@ services:
       NODE_ENV: development
       PORT: 8080
       DATABASE_URL: postgres://${BIDDING_DB_USER:-bidding}:${BIDDING_DB_PASS:-bidding}@db-bidding:5432/${BIDDING_DB_NAME:-bidding}
+      AUTH_INTERNAL_URL: http://svc-auth:8080
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
+      RABBITMQ_EXCHANGE: tracker.events
+      RABBITMQ_EXCHANGE_TYPE: topic
+      RABBITMQ_ROUTING_PREFIX: bidding
     depends_on:
       db-bidding: { condition: service_healthy }
+      rabbit-main: { condition: service_healthy }
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -223,7 +231,7 @@ services:
       PORT: 8080
       DATABASE_URL: postgresql://${AUDIT_DB_USER:-kel4}:${AUDIT_DB_PASS:-kel4}@db-audit:5432/${AUDIT_DB_NAME:-kel4}
       REDIS_URL: redis://redis-main:6379
-      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@rabbit-main:5672
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
       RABBITMQ_EXCHANGE: tracker.events
       RABBITMQ_EXCHANGE_TYPE: topic
       RABBITMQ_ROUTING_PREFIX: tracker
@@ -271,7 +279,11 @@ services:
     environment:
       NODE_ENV: development
       PORT: 8080
-      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@rabbit-main:5672
+      RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
+      RABBITMQ_EXCHANGE: tracker.events
+      RABBITMQ_EXCHANGE_TYPE: topic
+      RABBITMQ_QUEUE: notify.events
+      RABBITMQ_BINDINGS: tracker.#,bidding.#
       # Leave GMAIL_* empty for log-only mode (no real email, no secrets).
       GMAIL_USER: ${GMAIL_USER:-}
       GMAIL_PASS: ${GMAIL_PASS:-}

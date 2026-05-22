@@ -22,6 +22,7 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   directUrl: process.env.DIRECT_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+  rabbitmqUrl: process.env.RABBITMQ_URL ?? "amqp://localhost:5672",
   corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((o) => o.trim())
@@ -42,4 +43,8 @@ if (config.nodeEnv === "production" && !process.env.JWT_SECRET) {
 
 if (config.nodeEnv === "production" && !config.internalApiKey) {
   throw new Error("Missing required environment variable: INTERNAL_API_KEY");
+}
+
+if (config.nodeEnv === "production" && !process.env.RABBITMQ_URL) {
+  throw new Error("Missing required environment variable: RABBITMQ_URL");
 }

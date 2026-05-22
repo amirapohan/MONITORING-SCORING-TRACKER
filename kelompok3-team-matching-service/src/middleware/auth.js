@@ -52,6 +52,7 @@ async function verifyTokenWithSSO(token) {
   return {
     ...payload,
     student_id: payload.id,
+    student_name: payload.name || 'Unknown Student',
     auth_role: payload.role,
     role: mapRole(payload.role),
   };

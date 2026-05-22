@@ -1,5 +1,6 @@
 import type { AuditAction, AuditLog, TalentProjectCompletion } from "@prisma/client";
 
+import { prisma } from "../models/prisma";
 import { auditLogRepository } from "../repositories/auditLog.repository";
 import { talentProjectCompletionRepository } from "../repositories/talentProjectCompletion.repository";
 import { userRepository } from "../repositories/user.repository";
@@ -10,6 +11,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../types/errors";
+import { emitEvent } from "../utils/events";
 import { verifyAccessToken } from "../utils/jwt";
 import { stripPassword } from "../utils/user";
 
@@ -92,23 +94,28 @@ export const internalService = {
       throw new ConflictError("Project completion already exists");
     }
 
-    const completion = await talentProjectCompletionRepository.create({
-      talent: { connect: { id: input.talent_id } },
-      projectId: input.project_id,
-      tokenId: input.token_id,
-      ipfsUri: input.ipfs_uri,
-      completionDate,
-    });
-
-    await auditLogRepository.create({
-      action: "PROJECT_COMPLETED",
-      userId: input.talent_id,
-      metadata: {
-        projectId: input.project_id,
-        tokenId: input.token_id,
-        ipfsUri: input.ipfs_uri,
-        completionDate: completionDate.toISOString(),
-      },
+    const completion = await prisma.$transaction(async (tx) => {
+      const c = await talentProjectCompletionRepository.create(
+        {
+          talent: { connect: { id: input.talent_id } },
+          projectId: input.project_id,
+          tokenId: input.token_id,
+          ipfsUri: input.ipfs_uri,
+          completionDate,
+        },
+        tx,
+      );
+      await emitEvent(tx, {
+        eventType: "PROJECT_COMPLETED",
+        userId: input.talent_id,
+        metadata: {
+          projectId: input.project_id,
+          tokenId: input.token_id,
+          ipfsUri: input.ipfs_uri,
+          completionDate: completionDate.toISOString(),
+        },
+      });
+      return c;
     });
 
     return completion;
