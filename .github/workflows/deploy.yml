@@ -152,12 +152,14 @@ jobs:
 
           services=""
           if [ "$FORCE_ALL" = "true" ]; then
-            services="svc-auth svc-bidding svc-match svc-audit svc-notify gateway"
+            # minio = object storage untuk svc-audit
+            services="svc-auth svc-bidding svc-match svc-audit svc-notify gateway minio"
           else
             [ "$CH_AUTH"    = "true" ] && services="$services svc-auth"
             [ "$CH_BIDDING" = "true" ] && services="$services svc-bidding"
             [ "$CH_MATCH"   = "true" ] && services="$services svc-match"
-            [ "$CH_AUDIT"   = "true" ] && services="$services svc-audit"
+            # svc-audit pakai MinIO -> sertakan minio juga
+            [ "$CH_AUDIT"   = "true" ] && services="$services svc-audit minio"
             [ "$CH_NOTIFY"  = "true" ] && services="$services svc-notify"
             [ "$CH_GATEWAY" = "true" ] && services="$services gateway"
           fi

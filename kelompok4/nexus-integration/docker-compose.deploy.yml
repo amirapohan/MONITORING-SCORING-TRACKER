@@ -194,10 +194,20 @@ services:
       RABBITMQ_ROUTING_PREFIX: tracker
       AUTH_INTERNAL_URL: http://svc-auth:8080
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
+      # Object storage (MinIO). Backend konek internal ke service "minio".
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-kel4minio}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-kel4miniosecret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-documents}
+      # URL yang dipakai service lain / klien di tailnet untuk mengunduh file.
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://map-sandbox.tailcbdd04.ts.net:9000}
     depends_on:
       db-audit: { condition: service_healthy }
       redis-main: { condition: service_healthy }
       rabbit-main: { condition: service_healthy }
+      minio: { condition: service_healthy }
     networks: [nexus-net]
     restart: unless-stopped
 
@@ -233,6 +243,31 @@ services:
     networks: [nexus-net]
     restart: unless-stopped
 
+  # ---------- OBJECT STORAGE (MinIO) — media files untuk svc-audit ----------
+  # Port 9000 (S3 API) & 9001 (console) di-publish di map-sandbox. PC dosen
+  # tidak punya IP publik (hanya di tailnet), jadi ini otomatis privat ke
+  # tailnet — sama polanya dengan svc lain (8081/8084/dst). Diakses lewat
+  # map-sandbox.tailcbdd04.ts.net:9000. Service lain konek internal via "minio".
+  minio:
+    image: minio/minio:latest
+    container_name: nexus-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-kel4minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-kel4miniosecret}
+    volumes:
+      - minio_data:/data
+    networks: [nexus-net]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 networks:
   nexus-net:
     driver: bridge
@@ -242,3 +277,4 @@ volumes:
   bidding_data:
   match_data:
   audit_data:
+  minio_data:
