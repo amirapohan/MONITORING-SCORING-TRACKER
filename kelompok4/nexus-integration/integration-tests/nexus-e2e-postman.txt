@@ -1,0 +1,251 @@
+============================================================================
+ NEXUS — PANDUAN UJI INTEGRASI MANUAL DI POSTMAN (URUT ALUR END-TO-END)
+ Target: deployment dosen via Tailscale
+ Pendamping otomatis: nexus-e2e.sh  (semua langkah di bawah sudah lolos live)
+============================================================================
+
+BASE URL (API Gateway tunggal):
+    http://map-sandbox.tailcbdd04.ts.net
+
+Catatan gateway dosen: prefix /auth /bidding /match /tracker /notify dipetakan
+ke mount internal tiap service. Jadi PAKAI PERSIS path di bawah (jangan tambah
+/api atau /api/v1 sendiri — gateway sudah menanganinya).
+
+Persona & konstanta yang dipakai konsisten di seluruh alur:
+    Password semua akun     : Passw0rd!23
+    Talent (mahasiswa)      : "Putri Anindya"
+    Client (mitra/employer) : "CV Sumber Rejeki"
+    PENTING: email HARUS unik tiap run (DB tidak di-reset). Ganti angka di
+    belakang email tiap kali mengetes, mis. putri.anindya.07@nexus.dev.
+
+Yang perlu kamu SIMPAN antar langkah (copy dari response ke langkah berikut):
+    {{talentToken}}  {{clientToken}}  {{clientId}}
+    {{milestoneId}}  {{submissionId}}
+
+============================================================================
+ PETA INTEGRASI YANG DIBUKTIKAN (urut)
+============================================================================
+ [1][2]  K1 -> K3 : JWT terbit K1, divalidasi K3 (talent->student)
+ [3][4]  K4 -> K5 : milestone K4 -> RabbitMQ -> K5 consume
+ [5..8]  K1 -> K2 -> K5 : K2 validasi JWT K1, project -> RabbitMQ -> K5
+ [9..12] K4 -> K1 : review submission verifikasi reviewer ke K1 (+event K5)
+
+============================================================================
+ LANGKAH 1 — K1 REGISTER TALENT  (Identity & SSO)
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/auth/register
+ Headers: Content-Type: application/json
+ Body (raw JSON) — MOCK DATA:
+   {
+     "name": "Putri Anindya",
+     "email": "putri.anindya.07@nexus.dev",
+     "password": "Passw0rd!23",
+     "role": "talent"
+   }
+ Harap   : 201 Created, body { "success": true, "message": "User registered successfully", ... }
+
+============================================================================
+ LANGKAH 2 — K1 LOGIN TALENT  -> ambil JWT
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/auth/login
+ Headers: Content-Type: application/json
+ Body (raw JSON):
+   {
+     "email": "putri.anindya.07@nexus.dev",
+     "password": "Passw0rd!23"
+   }
+ Harap   : 200, body data.accessToken (JWT)
+ SIMPAN  : data.accessToken  -> {{talentToken}}
+ (catatan: login dibatasi 10x / 15 menit. Kalau 429, tunggu lalu ulangi.)
+
+============================================================================
+ LANGKAH 3 — K1 -> K3 : ENDPOINT K3 TERPROTEKSI, JWT DIVALIDASI KE K1
+============================================================================
+ Method : GET
+ URL    : {{BASE}}/match/me
+ Headers: Authorization: Bearer {{talentToken}}
+ Body   : (tidak ada)
+ Harap   : 200, body memuat:
+     "role":"student"        <- bukti K3 memetakan role talent (K1) -> student
+     "student_id":"..."      <- bukti K3 me-resolve identitas via K1
+ BUKTI INTEGRASI: K3 memvalidasi token K1 ke /internal/validate-token (internal,
+ tak lewat gateway). Kalau token salah -> 401 {"error":"missing_token"} / ditolak.
+
+============================================================================
+ LANGKAH 4 — K4 BUAT MILESTONE  (Tracker)  -> memicu publish event
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/tracker/milestones
+ Headers: Content-Type: application/json
+ Body (raw JSON) — MOCK DATA (deadline WAJIB di masa depan):
+   {
+     "title": "Integrasi Modul Pembayaran",
+     "description": "Membuat endpoint pembayaran + integrasi gateway",
+     "paymentAmount": 500000,
+     "deadline": "2026-12-31T17:00:00Z",
+     "employerId": "emp-nexus-01",
+     "studentId": "stu-nexus-01"
+   }
+ Harap   : 201, body data.id (milestoneId)
+ SIMPAN  : data.id -> {{milestoneId}}
+ Aturan K4: title/employerId/studentId string wajib; paymentAmount number > 0;
+            deadline datetime valid & di masa depan; status otomatis "open".
+
+============================================================================
+ LANGKAH 5 — K4 -> K5 : VERIFIKASI EVENT TER-CONSUME K5  (RabbitMQ)
+============================================================================
+ Method : GET
+ URL    : {{BASE}}/notify/notifications
+ Headers: (tidak ada)
+ Harap   : 200, body { "data": [ ... ] } memuat entri dengan:
+     "source":"rabbitmq"
+     "routingKey":"tracker.milestone.created"
+     "milestoneId":"{{milestoneId}}"     <- COCOKKAN dengan id dari Langkah 4
+ BUKTI INTEGRASI: milestone yang K4 publish ke exchange "tracker.events"
+ di-consume K5 (binding tracker.#) dan tercatat. (Event biasanya muncul < 2 detik.)
+
+============================================================================
+ LANGKAH 6 — K1 REGISTER CLIENT  (untuk K2 & review K4)
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/auth/register
+ Body (raw JSON) — MOCK DATA:
+   {
+     "name": "CV Sumber Rejeki",
+     "email": "cv.sumberrejeki.07@nexus.dev",
+     "password": "Passw0rd!23",
+     "role": "client"
+   }
+ Harap   : 201
+
+============================================================================
+ LANGKAH 7 — K1 LOGIN CLIENT -> ambil JWT + id
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/auth/login
+ Body (raw JSON):
+   {
+     "email": "cv.sumberrejeki.07@nexus.dev",
+     "password": "Passw0rd!23"
+   }
+ Harap   : 200
+ SIMPAN  : data.accessToken -> {{clientToken}}
+           data.user.id     -> {{clientId}}
+
+============================================================================
+ LANGKAH 8 — K1 -> K2 : K2 VALIDASI JWT K1 LALU BUAT PROJECT (publish event)
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/bidding/projects
+ Headers: Content-Type: application/json
+          Authorization: Bearer {{clientToken}}        <- WAJIB (role harus client)
+ Body (raw JSON) — MOCK DATA:
+   {
+     "judul_proyek": "Aplikasi Absensi Kampus",
+     "deskripsi_proyek": "Bangun aplikasi absensi berbasis QR untuk fakultas",
+     "skills": ["Backend"],
+     "requirements": "Mahasiswa aktif, mampu Node.js",
+     "budget_awal": 1000000,
+     "kuota_maksimal": 1
+   }
+ Harap   : 201, body { "message": "Project created successfully", "data": {...} }
+ PENTING : "skills" HARUS dari enum yang diizinkan K2:
+     Frontend, Backend, UI/UX, Mobile, Database, DevOps, Data Science,
+     Machine Learning  (nilai sembarang spt "python" -> 400 Validation failed)
+ Catatan : mitra otomatis dibuat dari user login (tak perlu seed data).
+ BUKTI INTEGRASI auth K1<->K2: tanpa Authorization -> 401
+     {"message":"Missing required headers: X-User-ID and X-User-Type"}.
+
+============================================================================
+ LANGKAH 9 — K2 -> K5 : VERIFIKASI EVENT PROJECT TER-CONSUME K5
+============================================================================
+ Method : GET
+ URL    : {{BASE}}/notify/notifications
+ Harap   : 200, body memuat entri dengan:
+     "routingKey":"bidding.project.created"
+     "project_title":"Aplikasi Absensi Kampus"   <- judul dari Langkah 8
+ BUKTI INTEGRASI: K5 bind "bidding.#" -> meng-consume event dari K2.
+
+============================================================================
+ LANGKAH 10 — K4 BUAT MILESTONE UNTUK REVIEW (employer = client K1)
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/tracker/milestones
+ Headers: Content-Type: application/json
+ Body (raw JSON) — employerId HARUS = {{clientId}} dari Langkah 7:
+   {
+     "title": "Laporan Akhir Sprint 1",
+     "paymentAmount": 750000,
+     "deadline": "2026-12-31T17:00:00Z",
+     "employerId": "{{clientId}}",
+     "studentId": "stu-nexus-01"
+   }
+ Harap   : 201
+ SIMPAN  : data.id -> {{milestoneId}}   (timpa nilai lama)
+
+============================================================================
+ LANGKAH 11 — K4 BUAT SUBMISSION (form-data, links-only tanpa file)
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/tracker/submissions
+ Body   : form-data (BUKAN raw JSON):
+     Key            | Type | Value
+     ---------------+------+-------------------------------------------
+     milestoneId    | Text | {{milestoneId}}
+     studentId      | Text | stu-nexus-01
+     description    | Text | Submission integrasi e2e
+     links          | Text | ["https://github.com/nexus/repo"]
+ Harap   : 201, body data.id (submissionId)
+ SIMPAN  : data.id -> {{submissionId}}
+
+============================================================================
+ LANGKAH 12 — K4 -> K1 : REVIEW SUBMISSION (verifikasi reviewer ke K1) +event K5
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/tracker/submissions/{{submissionId}}/review
+ Headers: Content-Type: application/json
+ Body (raw JSON) — reviewerId HARUS = {{clientId}} (employer milestone-nya):
+   {
+     "reviewerId": "{{clientId}}",
+     "status": "approved",
+     "notes": "Pekerjaan sesuai, disetujui."
+   }
+ Harap   : 201, body memuat "...successfully"
+ BUKTI INTEGRASI: K4 memanggil K1 (GET /internal/users/{{clientId}}, internal)
+ untuk memastikan reviewer adalah client sah == employerId milestone. Bila
+ INTERNAL_API_KEY tak sinkron atau K1 mati -> review gagal.
+ Status valid: approved | rejected | needs_revision.
+
+ (opsional) Verifikasi event lanjutan:
+ GET {{BASE}}/notify/notifications  -> cari "routingKey":"tracker.submission.approved"
+ dan "submissionId":"{{submissionId}}".
+
+============================================================================
+ RINGKASAN URUTAN (cheat sheet)
+============================================================================
+  1.  POST /auth/register            (talent)        -> 201
+  2.  POST /auth/login               (talent)        -> talentToken
+  3.  GET  /match/me                 Bearer talent   -> role:student   [K1->K3]
+  4.  POST /tracker/milestones                       -> milestoneId
+  5.  GET  /notify/notifications                     -> cek milestoneId [K4->K5]
+  6.  POST /auth/register            (client)        -> 201
+  7.  POST /auth/login               (client)        -> clientToken, clientId
+  8.  POST /bidding/projects         Bearer client   -> 201            [K1->K2]
+  9.  GET  /notify/notifications                     -> cek project    [K2->K5]
+ 10.  POST /tracker/milestones       employerId=clientId -> milestoneId
+ 11.  POST /tracker/submissions      form-data        -> submissionId
+ 12.  POST /tracker/submissions/:id/review reviewerId=clientId -> 201  [K4->K1]
+
+============================================================================
+ TROUBLESHOOTING
+============================================================================
+ - 429 di /auth/login        : rate-limit 10/15m. Tunggu, atau pakai email lain
+                               (register tidak kena limit).
+ - 400 "Validation failed" di /bidding/projects : "skills" di luar enum (lihat L8).
+ - 404 "Cannot GET /api/..." : path salah; pakai persis path di panduan ini
+                               (gateway dosen menambah prefix sendiri).
+ - Event tak muncul di /notify/notifications : tunggu beberapa detik & refresh;
+                               pastikan K4/K2 & K5 menunjuk RabbitMQ yang sama.
+============================================================================
