@@ -193,7 +193,11 @@ services:
       RABBITMQ_EXCHANGE_TYPE: topic
       RABBITMQ_ROUTING_PREFIX: tracker
       AUTH_INTERNAL_URL: http://svc-auth:8080
+      BIDDING_INTERNAL_URL: http://svc-bidding:8080
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
+      # Validasi integrasi lintas-service (K4->K1/K2). Default OFF -> aman utk
+      # data & test lama; nyalakan (true) saat ingin menegakkan aturan real-world.
+      VALIDATE_INTEGRATION: ${VALIDATE_INTEGRATION:-false}
       # Object storage (MinIO). Backend konek internal ke service "minio".
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"

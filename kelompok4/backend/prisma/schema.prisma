@@ -102,6 +102,9 @@ model Milestone {
   deadline      DateTime
   employerId    String
   studentId     String
+  // Tautan ke project di service Project Bidding (kelompok 2). Opsional supaya
+  // kompatibel dgn data lama; divalidasi ke K2 hanya bila VALIDATE_INTEGRATION on.
+  projectId     String?
   status        String   @default("open") // open | in_progress | completed | cancelled
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -110,6 +113,7 @@ model Milestone {
 
   @@index([employerId, createdAt])
   @@index([studentId, createdAt])
+  @@index([projectId])
   @@index([status])
   @@index([deadline])
 }

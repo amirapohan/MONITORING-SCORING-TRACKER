@@ -16,6 +16,7 @@ function mapMilestone(row) {
     deadline: row.deadline,
     employerId: row.employerId,
     studentId: row.studentId,
+    projectId: row.projectId,
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -31,6 +32,7 @@ async function createMilestone(payload) {
       deadline: payload.deadline,
       employerId: payload.employerId,
       studentId: payload.studentId,
+      projectId: payload.projectId ?? null,
       status: payload.status || "open",
     },
   });
@@ -47,6 +49,10 @@ async function listMilestones(filters = {}) {
 
   if (filters.studentId) {
     where.studentId = filters.studentId;
+  }
+
+  if (filters.projectId) {
+    where.projectId = filters.projectId;
   }
 
   if (filters.status) {

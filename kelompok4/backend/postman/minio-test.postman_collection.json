@@ -1,0 +1,94 @@
+{
+  "info": {
+    "name": "Kelompok4 - MinIO Upload Test",
+    "description": "Mock requests untuk ngetes upload file ke MinIO via svc tracker kelompok4. Set variable {{baseUrl}} di collection variables (default http://localhost:8080). Attach file PDF di tab Body > form-data (key 'file' tipe File). Bisa pakai postman/minio-test-sample.pdf.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "health"]
+        }
+      }
+    },
+    {
+      "name": "Upload Document (MinIO) - POST /documents",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "file", "type": "file", "src": "minio-test-sample.pdf", "description": "WAJIB. Harus PDF (mimetype application/pdf), max 10MB." },
+            { "key": "teamId", "value": "team-mock-001", "type": "text", "description": "WAJIB string non-kosong." },
+            { "key": "uploaderId", "value": "user-mock-001", "type": "text", "description": "WAJIB string non-kosong." },
+            { "key": "description", "value": "Mock dokumen untuk tes upload MinIO", "type": "text", "description": "Opsional." }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/documents",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "documents"]
+        },
+        "description": "Upload file langsung ke MinIO (folder documents/<teamId>/<uuid>-<filename>) lalu insert metadata ke DB. fileUrl di response = URL publik MinIO."
+      }
+    },
+    {
+      "name": "Get Documents by Team - GET /documents/team/:teamId",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/documents/team/team-mock-001",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "documents", "team", "team-mock-001"]
+        }
+      }
+    },
+    {
+      "name": "Get Document Download URL - GET /documents/:id/download",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/documents/PASTE_DOCUMENT_ID/download",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "documents", "PASTE_DOCUMENT_ID", "download"]
+        },
+        "description": "Ganti PASTE_DOCUMENT_ID dengan id dari response upload. Mengembalikan fileUrl MinIO."
+      }
+    },
+    {
+      "name": "Upload Submission Proof (MinIO) - POST /submissions",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "file", "type": "file", "src": "minio-test-sample.pdf", "description": "Opsional di sini. Boleh PDF/JPG/PNG/WEBP, max 10MB." },
+            { "key": "milestoneId", "value": "milestone-mock-001", "type": "text", "description": "WAJIB. Harus milestone yang ADA di DB." },
+            { "key": "studentId", "value": "student-mock-001", "type": "text", "description": "WAJIB. Harus cocok dgn studentId milestone tsb." },
+            { "key": "description", "value": "Mock bukti submission untuk tes upload MinIO", "type": "text", "description": "WAJIB string non-kosong." },
+            { "key": "links", "value": "[\"https://example.com/bukti\"]", "type": "text", "description": "Opsional. JSON array string/objek {url,label}." }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/submissions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "submissions"]
+        },
+        "description": "CATATAN: endpoint ini butuh milestone yang sudah ada di DB & studentId yang cocok, jadi kurang ideal buat sekadar tes MinIO. Pakai POST /documents kalau cuma mau verifikasi upload MinIO."
+      }
+    }
+  ]
+}

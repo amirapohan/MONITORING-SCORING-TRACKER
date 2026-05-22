@@ -236,7 +236,10 @@ services:
       RABBITMQ_EXCHANGE_TYPE: topic
       RABBITMQ_ROUTING_PREFIX: tracker
       AUTH_INTERNAL_URL: http://svc-auth:8080
+      BIDDING_INTERNAL_URL: http://svc-bidding:8080
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
+      # Validasi integrasi lintas-service (K4->K1/K2). Default OFF.
+      VALIDATE_INTEGRATION: ${VALIDATE_INTEGRATION:-false}
 
     depends_on:
       db-audit: { condition: service_healthy }

@@ -3,6 +3,8 @@ const milestoneRepository = require("../repositories/milestone_repo");
 const submissionRepository = require("../repositories/milestone_submission_repo");
 const eventPublisher = require("./event_publisher");
 const documentStorageService = require("./document_storage_service");
+const { getUserById } = require("../core/user_directory");
+const { isIntegrationValidationEnabled } = require("../core/integration_config");
 const {
   conflictError,
   forbiddenError,
@@ -128,6 +130,23 @@ async function createSubmission(payload = {}, file = null) {
 
   if (milestone.studentId !== studentId) {
     throw validationError("Field 'studentId' must match the milestone studentId");
+  }
+
+  // Real-world rule (di balik flag): submitter harus talent sah di K1.
+  if (isIntegrationValidationEnabled()) {
+    const student = await getUserById(studentId);
+
+    if (!student) {
+      throw notFoundError(
+        `Field 'studentId' ('${studentId}') was not found in the identity service`,
+      );
+    }
+
+    if (student.role && student.role !== "talent") {
+      throw validationError(
+        `Field 'studentId' ('${studentId}') must reference a 'talent' user (got '${student.role}')`,
+      );
+    }
   }
 
   if (["completed", "cancelled", "canceled"].includes(milestone.status)) {

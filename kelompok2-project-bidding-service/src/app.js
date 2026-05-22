@@ -7,10 +7,13 @@ app.use(express.json())
 const projectsRoute = require('./features/projects/routes/project.routes')
 const biddingRoute = require('./features/bidding/routes/bidding.routes')
 const negotiatingRoute = require('./features/negotiating/routes/negotiating.routes')
+const internalRoute = require('./routes/internal.routes')
 
 app.use('/api/projects', projectsRoute)
 app.use('/api/bids', biddingRoute)
 app.use('/api/negotiating', negotiatingRoute)
+// Service-to-service (dilindungi internal API key, bukan JWT/gateway).
+app.use('/internal', internalRoute)
 
 app.get('/', (req, res) => {
   res.send('Halo ini layanan bidding')

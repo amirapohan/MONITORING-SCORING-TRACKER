@@ -1,5 +1,8 @@
 const milestoneRepository = require("../repositories/milestone_repo");
 const eventPublisher = require("./event_publisher");
+const { getUserById } = require("../core/user_directory");
+const projectDirectory = require("../core/project_directory");
+const { isIntegrationValidationEnabled } = require("../core/integration_config");
 const {
   conflictError,
   notFoundError,
@@ -83,18 +86,88 @@ async function getMilestoneById(id) {
   return milestone;
 }
 
+// projectId boleh string atau number (proyek_id K2 = SERIAL int) -> simpan sbg string.
+function normalizeOptionalProjectId(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  throw validationError("Field 'projectId' must be a string or number");
+}
+
+// Validasi lintas-service (hanya saat VALIDATE_INTEGRATION on).
+async function assertUserHasRole(userId, expectedRole, fieldName) {
+  const user = await getUserById(userId);
+
+  if (!user) {
+    throw notFoundError(
+      `Field '${fieldName}' ('${userId}') was not found in the identity service`,
+    );
+  }
+
+  if (expectedRole && user.role && user.role !== expectedRole) {
+    throw validationError(
+      `Field '${fieldName}' ('${userId}') must reference a '${expectedRole}' user (got '${user.role}')`,
+    );
+  }
+
+  return user;
+}
+
+async function assertTalentAwardedOnProject(projectId, studentId) {
+  const project = await projectDirectory.getProjectById(projectId);
+
+  if (!project) {
+    throw notFoundError(
+      `Field 'projectId' ('${projectId}') was not found in the bidding service`,
+    );
+  }
+
+  if (!project.acceptedTalentIds.includes(String(studentId))) {
+    throw validationError(
+      `Student '${studentId}' has no accepted bid on project '${projectId}'; a milestone can only be created for an awarded talent`,
+    );
+  }
+
+  return project;
+}
+
 async function createMilestone(payload = {}) {
   requireString(payload.title, "title");
   requireString(payload.employerId, "employerId");
   requireString(payload.studentId, "studentId");
+
+  const employerId = payload.employerId.trim();
+  const studentId = payload.studentId.trim();
+  const projectId = normalizeOptionalProjectId(payload.projectId);
+
+  // Real-world rule (di balik flag): hanya client sah yang menetapkan milestone
+  // untuk talent yang sudah di-accept (awarded) pada project terkait.
+  if (isIntegrationValidationEnabled()) {
+    await assertUserHasRole(employerId, "client", "employerId");
+    await assertUserHasRole(studentId, "talent", "studentId");
+
+    if (projectId) {
+      await assertTalentAwardedOnProject(projectId, studentId);
+    }
+  }
 
   const milestone = await milestoneRepository.createMilestone({
     title: payload.title.trim(),
     paymentAmount: parsePositivePaymentAmount(payload.paymentAmount),
     description: normalizeOptionalString(payload.description) ?? null,
     deadline: parseFutureDeadline(payload.deadline),
-    employerId: payload.employerId.trim(),
-    studentId: payload.studentId.trim(),
+    employerId,
+    studentId,
+    projectId,
     status: "open",
   });
 
@@ -102,6 +175,7 @@ async function createMilestone(payload = {}) {
     milestoneId: milestone.id,
     employerId: milestone.employerId,
     studentId: milestone.studentId,
+    projectId: milestone.projectId,
     status: milestone.status,
     deadline: milestone.deadline,
   });
@@ -120,6 +194,13 @@ async function listMilestones(filters = {}) {
   if (filters.studentId !== undefined) {
     requireString(filters.studentId, "studentId");
     normalizedFilters.studentId = filters.studentId.trim();
+  }
+
+  if (filters.projectId !== undefined) {
+    const normalizedProjectId = normalizeOptionalProjectId(filters.projectId);
+    if (normalizedProjectId) {
+      normalizedFilters.projectId = normalizedProjectId;
+    }
   }
 
   if (filters.status !== undefined) {
