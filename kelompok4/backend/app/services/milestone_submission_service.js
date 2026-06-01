@@ -4,6 +4,7 @@ const submissionRepository = require("../repositories/milestone_submission_repo"
 const eventPublisher = require("./event_publisher");
 const documentStorageService = require("./document_storage_service");
 const { getUserById } = require("../core/user_directory");
+const projectAccessGate = require("../core/project_access_gate");
 const { isIntegrationValidationEnabled } = require("../core/integration_config");
 const {
   conflictError,
@@ -132,6 +133,14 @@ async function createSubmission(payload = {}, file = null) {
     throw validationError("Field 'studentId' must match the milestone studentId");
   }
 
+  if (milestone.projectId) {
+    await projectAccessGate.assertProjectSubmissionAccess({
+      projectId: milestone.projectId,
+      studentId,
+      actorId: payload.actorId,
+    });
+  }
+
   // Real-world rule (di balik flag): submitter harus talent sah di K1.
   if (isIntegrationValidationEnabled()) {
     const student = await getUserById(studentId);
@@ -206,6 +215,10 @@ async function createSubmission(payload = {}, file = null) {
 
 async function listSubmissions(filters = {}) {
   const normalizedFilters = {};
+  const accessContext = {
+    actorId: filters.actorId,
+    actorRole: filters.actorRole,
+  };
 
   if (filters.milestoneId !== undefined) {
     requireString(filters.milestoneId, "milestoneId");
@@ -221,10 +234,45 @@ async function listSubmissions(filters = {}) {
     normalizedFilters.status = normalizeStatus(filters.status);
   }
 
-  return submissionRepository.listSubmissions(normalizedFilters);
+  const submissions = await submissionRepository.listSubmissions(normalizedFilters);
+
+  if (submissions.length === 0) {
+    return submissions;
+  }
+
+  const milestoneCache = new Map();
+  const visibleSubmissions = [];
+
+  for (const submission of submissions) {
+    let milestone = milestoneCache.get(submission.milestoneId);
+
+    if (!milestone) {
+      milestone = await ensureMilestoneExists(submission.milestoneId);
+      milestoneCache.set(submission.milestoneId, milestone);
+    }
+
+    if (!milestone.projectId) {
+      visibleSubmissions.push(submission);
+      continue;
+    }
+
+    if (!accessContext.actorId || !accessContext.actorRole) {
+      throw validationError("Fields 'actorId' and 'actorRole' are required to list project-linked submissions");
+    }
+
+    await projectAccessGate.assertProjectReadAccess({
+      projectId: milestone.projectId,
+      actorId: accessContext.actorId,
+      actorRole: accessContext.actorRole,
+    });
+
+    visibleSubmissions.push(submission);
+  }
+
+  return visibleSubmissions;
 }
 
-async function getSubmissionById(id) {
+async function getSubmissionById(id, accessContext = undefined) {
   requireString(id, "id");
 
   const submission = await submissionRepository.getSubmissionById(id.trim());
@@ -233,11 +281,25 @@ async function getSubmissionById(id) {
     throw notFoundError(`Submission with id '${id}' was not found`);
   }
 
+  const milestone = await ensureMilestoneExists(submission.milestoneId);
+
+  if (milestone.projectId && accessContext !== undefined) {
+    if (!accessContext) {
+      throw validationError("Fields 'actorId' and 'actorRole' are required for project-linked submissions");
+    }
+
+    await projectAccessGate.assertProjectReadAccess({
+      projectId: milestone.projectId,
+      actorId: accessContext.actorId,
+      actorRole: accessContext.actorRole,
+    });
+  }
+
   return submission;
 }
 
-async function getSubmissionDetail(id) {
-  const submission = await getSubmissionById(id);
+async function getSubmissionDetail(id, accessContext = undefined) {
+  const submission = await getSubmissionById(id, accessContext);
   const latestReview = await submissionRepository.getLatestReviewBySubmissionId(submission.id);
 
   return {
@@ -246,8 +308,8 @@ async function getSubmissionDetail(id) {
   };
 }
 
-async function getSubmissionDownload(id) {
-  const submission = await getSubmissionById(id);
+async function getSubmissionDownload(id, accessContext = undefined) {
+  const submission = await getSubmissionById(id, accessContext);
 
   if (!submission.fileUrl) {
     throw notFoundError(`Submission with id '${id}' does not have an uploaded file`);
@@ -274,6 +336,13 @@ async function ensureClientReviewerCanReview(milestone, reviewerId) {
 
   if (milestone.employerId !== reviewer.id) {
     throw forbiddenError("Only the milestone client can review this submission");
+  }
+
+  if (milestone.projectId) {
+    await projectAccessGate.assertProjectClientAccess({
+      projectId: milestone.projectId,
+      actorId: reviewerId,
+    });
   }
 }
 
