@@ -1,7 +1,7 @@
 const milestoneRepository = require("../repositories/milestone_repo");
 const eventPublisher = require("./event_publisher");
 const { getUserById } = require("../core/user_directory");
-const projectDirectory = require("../core/project_directory");
+const projectAccessGate = require("../core/project_access_gate");
 const { isIntegrationValidationEnabled } = require("../core/integration_config");
 const {
   conflictError,
@@ -74,13 +74,17 @@ function normalizeStatus(value) {
   return normalizedStatus;
 }
 
-async function getMilestoneById(id) {
+async function getMilestoneById(id, accessContext = undefined) {
   requireString(id, "id");
 
   const milestone = await milestoneRepository.getMilestoneById(id.trim());
 
   if (!milestone) {
     throw notFoundError(`Milestone with id '${id}' was not found`);
+  }
+
+  if (accessContext !== undefined) {
+    await assertCanReadMilestone(milestone, accessContext);
   }
 
   return milestone;
@@ -122,22 +126,22 @@ async function assertUserHasRole(userId, expectedRole, fieldName) {
   return user;
 }
 
-async function assertTalentAwardedOnProject(projectId, studentId) {
-  const project = await projectDirectory.getProjectById(projectId);
-
-  if (!project) {
-    throw notFoundError(
-      `Field 'projectId' ('${projectId}') was not found in the bidding service`,
-    );
+async function assertCanReadMilestone(milestone, accessContext = null) {
+  if (!milestone.projectId) {
+    return milestone;
   }
 
-  if (!project.acceptedTalentIds.includes(String(studentId))) {
-    throw validationError(
-      `Student '${studentId}' has no accepted bid on project '${projectId}'; a milestone can only be created for an awarded talent`,
-    );
+  if (!accessContext) {
+    throw validationError("Fields 'actorId' and 'actorRole' are required for project-linked milestones");
   }
 
-  return project;
+  await projectAccessGate.assertProjectReadAccess({
+    projectId: milestone.projectId,
+    actorId: accessContext.actorId,
+    actorRole: accessContext.actorRole,
+  });
+
+  return milestone;
 }
 
 async function createMilestone(payload = {}) {
@@ -154,10 +158,15 @@ async function createMilestone(payload = {}) {
   if (isIntegrationValidationEnabled()) {
     await assertUserHasRole(employerId, "client", "employerId");
     await assertUserHasRole(studentId, "talent", "studentId");
+  }
 
-    if (projectId) {
-      await assertTalentAwardedOnProject(projectId, studentId);
-    }
+  if (projectId) {
+    await projectAccessGate.assertProjectMilestoneAccess({
+      projectId,
+      employerId,
+      studentId,
+      actorId: payload.actorId,
+    });
   }
 
   const milestone = await milestoneRepository.createMilestone({
@@ -185,6 +194,10 @@ async function createMilestone(payload = {}) {
 
 async function listMilestones(filters = {}) {
   const normalizedFilters = {};
+  const accessContext = {
+    actorId: filters.actorId,
+    actorRole: filters.actorRole,
+  };
 
   if (filters.employerId !== undefined) {
     requireString(filters.employerId, "employerId");
@@ -207,11 +220,40 @@ async function listMilestones(filters = {}) {
     normalizedFilters.status = normalizeStatus(filters.status);
   }
 
-  return milestoneRepository.listMilestones(normalizedFilters);
+  const milestones = await milestoneRepository.listMilestones(normalizedFilters);
+
+  if (milestones.every((milestone) => !milestone.projectId)) {
+    return milestones;
+  }
+
+  if (!accessContext.actorId || !accessContext.actorRole) {
+    throw validationError("Fields 'actorId' and 'actorRole' are required to list project-linked milestones");
+  }
+
+  const visibleMilestones = [];
+
+  for (const milestone of milestones) {
+    if (!milestone.projectId) {
+      visibleMilestones.push(milestone);
+      continue;
+    }
+
+    await assertCanReadMilestone(milestone, accessContext);
+    visibleMilestones.push(milestone);
+  }
+
+  return visibleMilestones;
 }
 
 async function updateMilestone(id, payload = {}) {
   const existingMilestone = await getMilestoneById(id);
+
+  if (existingMilestone.projectId) {
+    await projectAccessGate.assertProjectClientAccess({
+      projectId: existingMilestone.projectId,
+      actorId: payload.actorId,
+    });
+  }
 
   if (existingMilestone.status === "completed") {
     throw conflictError("Completed milestones cannot be edited");

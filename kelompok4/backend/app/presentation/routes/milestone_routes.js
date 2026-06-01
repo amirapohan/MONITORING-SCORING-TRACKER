@@ -32,7 +32,10 @@ router.get("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const milestone = await milestoneService.getMilestoneById(req.params.id);
+    const milestone = await milestoneService.getMilestoneById(req.params.id, {
+      actorId: req.query.actorId,
+      actorRole: req.query.actorRole,
+    });
 
     res.status(200).json({
       data: milestone,
