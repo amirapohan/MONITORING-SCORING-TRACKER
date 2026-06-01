@@ -171,8 +171,8 @@ if [ -n "$CUID" ] && [ -n "$TUID" ]; then
   M_MARK="e2e-ms-$(date +%s)-$RANDOM"
   MS_BODY="{\"title\":\"$M_MARK\",\"paymentAmount\":750000,\"deadline\":\"$DL\",\"employerId\":\"$CUID\",\"studentId\":\"$TUID\""
   if [ -n "$PROJECT_ID" ]; then
-    MS_BODY="$MS_BODY,\"projectId\":\"$PROJECT_ID\""
-    info "milestone tertaut projectId=$PROJECT_ID (saat VALIDATE_INTEGRATION ON, K4 verifikasi awarding ke K2)"
+    MS_BODY="$MS_BODY,\"projectId\":\"$PROJECT_ID\",\"actorId\":\"$CUID\""
+    info "milestone tertaut projectId=$PROJECT_ID (K4 gate: actorId client + talent awarded diverifikasi ke K2)"
   else
     info "projectId kosong (K2 tak tersedia) -> milestone tanpa tautan project"
   fi
@@ -196,7 +196,7 @@ if [ -n "$MID" ]; then
 
   # WRITE: unggah file beneran (multipart). studentId HARUS = studentId milestone.
   raw=$(curl -s -m "$TIMEOUT" -w $'\n%{http_code}' -X POST "$BASE/tracker/submissions" \
-        -F "milestoneId=$MID" -F "studentId=$TUID" -F "description=e2e storage proof" \
+        -F "milestoneId=$MID" -F "studentId=$TUID" -F "actorId=$TUID" -F "description=e2e storage proof" \
         -F "file=@$PROOF;type=image/png")
   UBODY="${raw%$'\n'*}"; UCODE="${raw##*$'\n'}"
   FURL=$(jget "$UBODY" fileUrl); SUBID=$(jget "$UBODY" id)

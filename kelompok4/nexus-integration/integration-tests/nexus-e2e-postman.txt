@@ -172,12 +172,14 @@ ke mount internal tiap service. PAKAI PERSIS path di bawah (jangan tambah
      "paymentAmount": 750000,
      "deadline": "2026-12-31T17:00:00Z",
      "projectId": "{{projectId}}",       <- TAUTAN ke project K2 (baru)
+     "actorId": "{{clientId}}",          <- caller yg melakukan create milestone
      "employerId": "{{clientId}}",       <- client K1 (= pemilik project)
      "studentId": "{{talentId}}" }       <- talent K1 yg sudah di-accept
  Harap  : 201, body data.id + data.projectId terisi
  SIMPAN : data.id -> {{milestoneId}}
- SAAT VALIDATE_INTEGRATION ON, K4 akan menolak (404/400) bila:
-   - employerId/studentId tak ada / salah role di K1, atau
+ K4 akan menolak (403/404/400) bila:
+   - actorId != employerId, atau
+   - employerId bukan client pemilik project, atau
    - project {{projectId}} tak ada di K2, atau
    - {{talentId}} belum di-ACCEPT di {{projectId}} (lihat Langkah 9).
 
@@ -197,11 +199,25 @@ ke mount internal tiap service. PAKAI PERSIS path di bawah (jangan tambah
  Body (form-data, BUKAN JSON) — file HANYA PDF/JPG/PNG/WEBP (maks 10 MB):
      milestoneId | Text | {{milestoneId}}
      studentId   | Text | {{talentId}}     <- HARUS = studentId milestone
+     actorId     | Text | {{talentId}}     <- caller submitter
      description | Text | Submission sprint 1
      file        | File | <pilih PDF/PNG/JPG/WEBP>   (boleh juga pakai "links")
  Harap  : 201, body data.id + data.fileUrl (URL MinIO)
  SIMPAN : data.id -> {{submissionId}} ; data.fileUrl -> {{fileUrl}}
  CEK    : {{fileUrl}} memuat "/documents/" (tersimpan di bucket MinIO).
+
+============================================================================
+ LANGKAH 12B — K4 : NEGATIVE GATE CHECK (talent tak di-award tak boleh submit)
+============================================================================
+ Method : POST
+ URL    : {{BASE}}/tracker/submissions
+ Body (form-data):
+     milestoneId | Text | {{milestoneId}}
+     studentId   | Text | {{otherTalentId}}
+     actorId     | Text | {{otherTalentId}}
+     description | Text | Should fail
+     links       | Text | [{"url":"https://example.com/proof"}]
+ Harap  : 403, karena talent tsb tidak di-award pada project.
 
 ============================================================================
  LANGKAH 13 — K4 : READ BERKAS LANGSUNG DARI MINIO (bukti storage)
