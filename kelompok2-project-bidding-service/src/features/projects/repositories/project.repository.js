@@ -40,14 +40,49 @@ const ensureMitraExists = async (mitraId, namaMitra, kontakMitra) => {
   await db.query(sql, [mitraId, namaMitra, kontakMitra])
 }
 
-const findAll = async () => {
+const findAll = async (filters = {}) => {
+  const conditions = []
+  const values = []
+
+  if (filters.search) {
+    values.push(`%${filters.search}%`)
+    conditions.push(`(
+      judul_proyek ILIKE $${values.length}
+      OR deskripsi_proyek ILIKE $${values.length}
+      OR requirements ILIKE $${values.length}
+      OR skills::text ILIKE $${values.length}
+    )`)
+  }
+
+  if (filters.status_proyek) {
+    values.push(filters.status_proyek)
+    conditions.push(`status_proyek = $${values.length}`)
+  }
+
+  if (filters.mitra_id !== undefined) {
+    values.push(String(filters.mitra_id))
+    conditions.push(`mitra_id = $${values.length}`)
+  }
+
+  if (filters.budget_min !== undefined) {
+    values.push(filters.budget_min)
+    conditions.push(`budget_awal >= $${values.length}`)
+  }
+
+  if (filters.budget_max !== undefined) {
+    values.push(filters.budget_max)
+    conditions.push(`budget_awal <= $${values.length}`)
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   const sql = `
     SELECT *
     FROM proyek
+    ${whereClause}
     ORDER BY created_at DESC, proyek_id DESC
   `
 
-  const result = await db.query(sql)
+  const result = await db.query(sql, values)
   return result.rows
 }
 
@@ -103,11 +138,26 @@ const remove = async (id) => {
   return result.rows[0]
 }
 
+const findPopular = async (limit = 10) => {
+  const sql = `
+    SELECT p.*, COUNT(b.bid_id) AS total_bids
+    FROM proyek p
+    LEFT JOIN bid b ON p.proyek_id = b.proyek_id
+    GROUP BY p.proyek_id
+    ORDER BY total_bids DESC, p.created_at DESC
+    LIMIT $1
+  `
+
+  const result = await db.query(sql, [limit])
+  return result.rows
+}
+
 module.exports = {
   create,
   findAll,
   findById,
   update,
   remove,
-  ensureMitraExists
+  ensureMitraExists,
+  findPopular
 }

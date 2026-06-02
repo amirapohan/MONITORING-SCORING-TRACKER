@@ -42,6 +42,23 @@ class BiddingController {
         return responseError(res, 'Bid not found', 404, 'BID_NOT_FOUND');
       }
 
+      const userId = req.user.id;
+      const userType = req.user.type;
+
+      if (userType === 'client') {
+        const project = await biddingService.getProjectDetails(bid.proyek_id);
+        if (!isProjectOwner(project, userId)) {
+          return responseError(res, 'Anda tidak memiliki akses ke bid proyek ini', 403, 'FORBIDDEN');
+        }
+      } else if (userType === 'talent') {
+        const isGroupMember = req.user.groupId && String(bid.kelompok_id) === String(req.user.groupId);
+        const isSubmitter = String(bid.pendaftar_id) === String(userId);
+        
+        if (!isGroupMember && !isSubmitter) {
+          return responseError(res, 'Anda tidak memiliki akses ke bid kelompok lain', 403, 'FORBIDDEN');
+        }
+      }
+
       return responseSuccess(res, 'Bid retrieved successfully', bid, 200);
 
     } catch (error) {
@@ -60,6 +77,14 @@ class BiddingController {
 
       if (!project_id || !priority || !document_url || !student_id || !tawaran_harga || !tawaran_waktu) {
         return responseError(res, 'Missing required fields: project_id, priority, document_url, student_id, tawaran_harga, tawaran_waktu', 400, 'VALIDATION_ERROR');
+      }
+
+      if (req.user.id && String(student_id) !== String(req.user.id)) {
+        return responseError(res, 'Anda tidak dapat melakukan bid atas nama mahasiswa lain', 403, 'FORBIDDEN');
+      }
+
+      if (req.user.groupId && group_id && String(group_id) !== String(req.user.groupId)) {
+        return responseError(res, 'Anda tidak dapat melakukan bid untuk kelompok lain', 403, 'FORBIDDEN');
       }
 
       if (!Number.isInteger(priority) || priority < 1) {

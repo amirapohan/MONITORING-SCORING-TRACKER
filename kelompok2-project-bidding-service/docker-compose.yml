@@ -8,8 +8,10 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgres://postgres:postgres@db:5432/bidding
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - db
+      - redis
 
     develop:
       watch:
@@ -33,5 +35,13 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./database_schema.sql:/docker-entrypoint-initdb.d/database_schema.sql
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
 volumes:
   db-data:
+  redis-data:

@@ -40,7 +40,8 @@ const verifyBearerToken = async (token) => {
     type: normalizeUserType(payload.role || payload.type),
     role: payload.role,
     email: payload.email,
-    name: payload.name
+    name: payload.name,
+    groupId: payload.group_id || payload.groupId || payload.kelompok_id ? String(payload.group_id || payload.groupId || payload.kelompok_id) : undefined
   };
 };
 
@@ -54,6 +55,7 @@ const authMiddleware = async (req, res, next) => {
     }
     const userId = req.headers['x-user-id'];
     const userType = req.headers['x-user-type'];
+    const groupId = req.headers['x-group-id'];
     if (!userId || !userType) {
       return res.status(401).json({
         success: false,
@@ -72,7 +74,8 @@ const authMiddleware = async (req, res, next) => {
     }
     req.user = {
       id: String(userId),
-      type: normalizedUserType
+      type: normalizedUserType,
+      groupId: groupId ? String(groupId) : undefined
     };
     next();
 

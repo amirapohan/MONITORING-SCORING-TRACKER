@@ -4,6 +4,7 @@ const authMiddleware = require('../../../middleware/auth.middleware')
 
 const router = express.Router()
 
+router.get('/popular', projectController.getPopularProjects)
 router.get('/', projectController.getProjects)
 router.get('/:id', projectController.getProjectById)
 router.post('/', authMiddleware, projectController.createProject)

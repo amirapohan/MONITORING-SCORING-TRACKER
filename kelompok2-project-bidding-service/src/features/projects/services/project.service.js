@@ -3,6 +3,7 @@ const {
   VALID_PROJECT_STATUSES,
   VALID_PROJECT_SKILLS
 } = require('../../../middleware/projectsValidation')
+const cache = require('../../../config/redis')
 
 const createError = (message, statusCode, errors) => {
   const error = new Error(message)
@@ -211,7 +212,13 @@ const createProject = async (payload) => {
 }
 
 const getProjects = async (queryFilters = {}) => {
-  return projectRepository.findAll(queryFilters)
+  const projects = await projectRepository.findAll(queryFilters)
+
+  if (queryFilters.search && projects.length === 0) {
+    throw createValidationError(['No projects found for search query'])
+  }
+
+  return projects
 }
 
 const getProjectById = async (id) => {
@@ -249,11 +256,28 @@ const deleteProject = async (id) => {
   return deletedProject
 }
 
+const getPopularProjects = async (limit = 10) => {
+  const cacheKey = `projects:popular:limit:${limit}`
+  const TTL = 300 // 5 minutes
+
+  const cachedData = await cache.getJson(cacheKey)
+  if (cachedData) {
+    return { data: cachedData, source: 'cache' }
+  }
+
+  const projects = await projectRepository.findPopular(limit)
+
+  await cache.setJson(cacheKey, projects, TTL)
+
+  return { data: projects, source: 'repository' }
+}
+
 module.exports = {
   createProject,
   getProjects,
   getProjectById,
   updateProject,
   deleteProject,
-  ensureMitraExists
+  ensureMitraExists,
+  getPopularProjects
 }

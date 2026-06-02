@@ -8,6 +8,25 @@ const isProjectOwner = (project, userId) => (
   String(project.mitra_id) === String(userId)
 );
 
+const isTalentBidOwner = (bid, user) => {
+  const userId = String(user.id);
+  const groupId = user.groupId ? String(user.groupId) : undefined;
+  const bidGroupId = bid.kelompok_id ? String(bid.kelompok_id) : undefined;
+
+  return (
+    (bidGroupId && bidGroupId === userId) ||
+    (bidGroupId && groupId && bidGroupId === groupId) ||
+    String(bid.pendaftar_id) === userId
+  );
+};
+
+const canAccessBidNegotiations = (bid, project, user) => {
+  if (user.type === 'admin') return true;
+  if (user.type === 'client') return isProjectOwner(project, user.id);
+  if (user.type === 'talent') return isTalentBidOwner(bid, user);
+  return false;
+};
+
 class NegotiatingController {
   async createNegotiation(req, res) {
     try {
@@ -30,7 +49,7 @@ class NegotiatingController {
         }
         role_ = 'client';
       } else if (userType === 'talent') {
-        if (bid.kelompok_id !== userId) {
+        if (!isTalentBidOwner(bid, req.user)) {
           return responseError(res, 'Unauthorized: Ini bukan bid kelompok Anda', 403, 'FORBIDDEN');
         }
         role_ = 'talent';
@@ -72,7 +91,11 @@ class NegotiatingController {
 
   async getAllNegotiations(req, res) {
     try {
-      const negotiations = await negotiatingService.getAllNegotiations();
+      const negotiations = await negotiatingService.getAllNegotiations(
+        req.user.id,
+        req.user.type,
+        req.user.groupId
+      );
 
       return responseSuccess(res, 'Negotiations retrieved successfully', {
         negotiations,
@@ -95,6 +118,13 @@ class NegotiatingController {
       const bid = await negotiatingService.getBidDetails(bid_id);
       if (!bid) {
         return responseError(res, 'Bid not found', 404, 'BID_NOT_FOUND');
+      }
+      const project = await negotiatingService.getProjectDetails(bid.proyek_id);
+      if (!project) {
+        return responseError(res, 'Project not found', 404, 'PROJECT_NOT_FOUND');
+      }
+      if (!canAccessBidNegotiations(bid, project, req.user)) {
+        return responseError(res, 'Anda tidak memiliki akses ke negosiasi bid ini', 403, 'FORBIDDEN');
       }
 
       const negotiations = await negotiatingService.getNegotiationsByBidId(bid_id);
@@ -121,6 +151,20 @@ class NegotiatingController {
       const negotiation = await negotiatingService.getNegotiationById(nego_id);
       if (!negotiation) {
         return responseError(res, 'Negotiation not found', 404, 'NEGOTIATION_NOT_FOUND');
+      }
+      if (String(negotiation.bid_id) !== String(bid_id)) {
+        return responseError(res, 'Negotiation not found for this bid', 404, 'NEGOTIATION_NOT_FOUND');
+      }
+      const bid = await negotiatingService.getBidDetails(bid_id);
+      if (!bid) {
+        return responseError(res, 'Bid not found', 404, 'BID_NOT_FOUND');
+      }
+      const project = await negotiatingService.getProjectDetails(bid.proyek_id);
+      if (!project) {
+        return responseError(res, 'Project not found', 404, 'PROJECT_NOT_FOUND');
+      }
+      if (!canAccessBidNegotiations(bid, project, req.user)) {
+        return responseError(res, 'Anda tidak memiliki akses untuk menghapus negosiasi ini', 403, 'FORBIDDEN');
       }
 
       const deleted = await negotiatingService.deleteNegotiation(nego_id, bid_id);
@@ -165,7 +209,7 @@ class NegotiatingController {
           return responseError(res, 'Anda tidak bisa merespons tawaran Anda sendiri', 403, 'FORBIDDEN');
         }
       } else if (userType === 'talent') {
-        if (bid.kelompok_id !== userId) {
+        if (!isTalentBidOwner(bid, req.user)) {
           return responseError(res, 'Unauthorized untuk bid ini', 403, 'FORBIDDEN');
         }
         if (nego.role_ === 'talent') {

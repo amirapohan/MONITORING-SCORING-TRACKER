@@ -156,10 +156,26 @@ const deleteProject = async (req, res) => {
   }
 }
 
+const getPopularProjects = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const result = await projectService.getPopularProjects(limit);
+
+    return res.status(200).json({
+      message: 'Popular projects retrieved successfully',
+      data: result.data,
+      source: result.source
+    });
+  } catch (error) {
+    return sendErrorResponse(res, error);
+  }
+};
+
 module.exports = {
   createProject,
   getProjects,
   getProjectById,
   updateProject,
-  deleteProject
+  deleteProject,
+  getPopularProjects
 }

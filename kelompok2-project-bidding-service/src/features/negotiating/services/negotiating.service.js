@@ -25,9 +25,9 @@ class NegotiatingService {
     return result.rows[0];
   }
   async deleteNegotiation(negotiationId, bidId) {
-    const query = 'DELETE FROM negosiasi WHERE nego_id = $1 RETURNING *';
+    const query = 'DELETE FROM negosiasi WHERE nego_id = $1 AND bid_id = $2 RETURNING *';
     const negotiations = await this.getNegotiationsByBidId(bidId);
-    const negoToDelete = negotiations.find(nego => nego.nego_id === negotiationId);
+    const negoToDelete = negotiations.find(nego => String(nego.nego_id) === String(negotiationId));
 
     if (!negoToDelete) {
       throw new Error('Negotiation not found for this bid');
@@ -42,17 +42,30 @@ class NegotiatingService {
       }
     }
 
-    const deleteResult = await pool.query(query, [negotiationId]);
+    const deleteResult = await pool.query(query, [negotiationId, bidId]);
     return deleteResult.rows[0];
   }
-  async getAllNegotiations() {
-    const query = `
+  async getAllNegotiations(userId, userType, groupId) {
+    let query = `
       SELECT n.*, b.proyek_id, b.kelompok_id, b.status_bid
       FROM negosiasi n
       JOIN bid b ON n.bid_id = b.bid_id
-      ORDER BY n.created_at DESC
     `;
-    const result = await pool.query(query);
+    let params = [];
+
+    if (userType === 'client') {
+      query += ' JOIN proyek p ON b.proyek_id = p.proyek_id WHERE p.mitra_id = $1';
+      params = [userId];
+    } else if (userType === 'talent') {
+      query += ' WHERE (b.kelompok_id = $1 OR b.kelompok_id = $2 OR b.pendaftar_id = $1)';
+      params = [userId, groupId || userId];
+    } else if (userType !== 'admin') {
+      throw new Error(`Invalid user type: ${userType}`);
+    }
+
+    query += ' ORDER BY n.created_at DESC';
+
+    const result = await pool.query(query, params);
     return result.rows;
   }
   async getNegotiationById(negoId) {
