@@ -11,6 +11,9 @@ import internalRoutes from "./routes/internal.routes";
 
 const app = express();
 
+// Trust the first layer of proxy (e.g. Nginx, Load Balancer) to get the real client IP
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(
   cors({
