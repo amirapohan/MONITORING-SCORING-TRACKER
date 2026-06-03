@@ -14,6 +14,13 @@ function requireStudentRole(req, res, next) {
   return next();
 }
 
+function sendError(res, err) {
+  const status = err?.status || 500;
+  const payload = { error: err?.message || 'internal_error' };
+  if (err?.detail) payload.detail = err.detail;
+  return res.status(status).json(payload);
+}
+
 async function handleCreateJoinRequest(req, res, teamId) {
   try {
     if (!teamId) {
@@ -28,7 +35,7 @@ async function handleCreateJoinRequest(req, res, teamId) {
 
     return res.status(201).json({ data: result });
   } catch (err) {
-    return res.status(err.status || 500).json({ error: err.message || 'internal_error' });
+    return sendError(res, err);
   }
 }
 
@@ -75,7 +82,7 @@ router.put('/teams/:id/required-skills', auth, requireStudentRole, async (req, r
     const result = await updateRequiredSkills(req.params.id, req.user.student_id, required_skills);
     res.json({ data: result });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'internal_error' });
+    return sendError(res, err);
   }
 });
 
@@ -119,7 +126,7 @@ router.post('/teams/:id/invites', auth, requireStudentRole, async (req, res) => 
     });
     return res.status(201).json({ data: invite });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'internal_error', detail: err.detail });
+    return sendError(res, err);
   }
 });
 
@@ -139,7 +146,7 @@ router.put('/invites/:id/respond', auth, requireStudentRole, async (req, res) =>
     });
     return res.status(200).json({ data: invite });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'internal_error', detail: err.detail });
+    return sendError(res, err);
   }
 });
 
@@ -168,7 +175,7 @@ router.put('/join-requests/:req/respond', auth, requireStudentRole, async (req, 
     const result = await respondJoinRequest({ requestId: reqId, poStudentId: req.user.student_id, response: normalizedAction });
     return res.json({ data: result });
   } catch (err) {
-    return res.status(err.status || 500).json({ error: err.message || 'internal_error' });
+    return sendError(res, err);
   }
 });
 
@@ -185,7 +192,7 @@ router.put('/teams/:id/join-requests/:req_id', auth, requireStudentRole, async (
     });
     res.json({ data: result });
   } catch (err) { 
-    res.status(err.status || 500).json({ error: err.message || 'internal_error' }); 
+    return sendError(res, err);
   }
 });
 
@@ -200,7 +207,7 @@ router.delete('/members/:sid', auth, requireStudentRole, async (req, res) => {
     await removeMember(team.id, targetSid, team.period);
     return res.json({ message: 'Member berhasil dikeluarkan' });
   } catch (err) {
-    return res.status(err.status || 500).json({ error: err.message || 'internal_error' });
+    return sendError(res, err);
   }
 });
 
@@ -219,7 +226,7 @@ router.delete('/teams/:id/members/me', auth, requireStudentRole, async (req, res
     await removeMember(req.params.id, req.user.student_id, team.period);
     res.json({ message: 'Berhasil keluar dari tim' });
   } catch (err) { 
-    res.status(err.status || 500).json({ error: err.message || 'internal_error' }); 
+    return sendError(res, err);
   }
 });
 
@@ -232,7 +239,7 @@ router.delete('/teams/:id/members/:sid', auth, requireStudentRole, async (req, r
     await removeMember(req.params.id, req.params.sid, team.period);
     res.json({ message: 'Member berhasil dikeluarkan' });
   } catch (err) { 
-    res.status(err.status || 500).json({ error: err.message || 'internal_error' }); 
+    return sendError(res, err);
   }
 });
 
