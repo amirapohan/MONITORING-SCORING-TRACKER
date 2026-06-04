@@ -22,6 +22,14 @@ function forbiddenError(message) {
   return new ApiError(403, "FORBIDDEN", message);
 }
 
+function unprocessableEntityError(message) {
+  return new ApiError(422, "UNPROCESSABLE_ENTITY", message);
+}
+
+function configurationError(message) {
+  return new ApiError(500, "CONFIGURATION_ERROR", message);
+}
+
 function buildErrorResponse(error) {
   return {
     error: {
@@ -38,5 +46,7 @@ module.exports = {
   notFoundError,
   conflictError,
   forbiddenError,
+  unprocessableEntityError,
+  configurationError,
   buildErrorResponse,
 };

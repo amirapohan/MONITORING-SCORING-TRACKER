@@ -77,6 +77,53 @@ model NftRecord {
   @@index([teamId])
 }
 
+model ProjectCompletion {
+  id          String   @id @default(uuid())
+  projectId   String   @unique
+  projectTitle String
+  clientId    String
+  actorId     String
+  status      String   @default("completed")
+  completedAt DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  certificates CertificateRecord[]
+
+  @@index([clientId, completedAt])
+}
+
+model CertificateRecord {
+  id                        String   @id @default(uuid())
+  projectCompletionId       String
+  projectId                 String
+  talentId                  String
+  talentName                String
+  projectTitle              String
+  walletAddress             String
+  certificatePdfUrl         String?
+  certificatePdfStoragePath String?
+  metadataIpfsCid           String?
+  metadataUri               String?
+  mintStatus                String   @default("pending")
+  network                   String?
+  contractAddress           String?
+  tokenId                   String?
+  txHash                    String?
+  mintedAt                  DateTime?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  projectCompletion ProjectCompletion @relation(fields: [projectCompletionId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, talentId])
+  @@index([projectCompletionId])
+  @@index([projectId, createdAt])
+  @@index([talentId, createdAt])
+  @@index([mintStatus, createdAt])
+}
+
 // ----- Ported from origin/develop (was raw SQL) -> Prisma -----
 // `users` FKs intentionally dropped: users are owned by svc-auth (group 1).
 // employer/student/reviewer/uploader ids are plain Strings (UUID from auth),

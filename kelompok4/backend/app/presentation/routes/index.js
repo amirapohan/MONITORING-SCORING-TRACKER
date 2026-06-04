@@ -5,6 +5,7 @@ const submissionRoutes = require("./submission_routes");
 const logbookRoutes = require("./logbook_routes");
 const assessmentRoutes = require("./assessment_routes");
 const nftRoutes = require("./nft_routes");
+const projectRoutes = require("./project_routes");
 
 const router = express.Router();
 
@@ -15,6 +16,7 @@ router.get("/health", (req, res) => {
 router.use("/documents", documentRoutes);
 router.use("/milestones", milestoneRoutes);
 router.use("/submissions", submissionRoutes);
+router.use("/projects", projectRoutes);
 router.use("/logbook", logbookRoutes);
 router.use("/assessments", assessmentRoutes);
 router.use("/nft", nftRoutes);

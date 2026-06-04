@@ -36,6 +36,17 @@ async function uploadFileToMinio({ storagePath, file }) {
   return buildPublicFileUrl(storagePath);
 }
 
+async function uploadBufferToMinio({ storagePath, buffer, contentType }) {
+  const client = getMinioClient();
+  const bucketName = getMinioBucketName();
+
+  await client.putObject(bucketName, storagePath, buffer, buffer.length, {
+    "Content-Type": contentType,
+  });
+
+  return buildPublicFileUrl(storagePath);
+}
+
 async function uploadDocumentFile({ teamId, file }) {
   if (!file) {
     throw validationError("Field 'file' is required");
@@ -67,6 +78,26 @@ async function uploadSubmissionProofFile({ milestoneId, file }) {
   };
 }
 
+async function uploadCertificatePdf({ projectId, talentId, fileName, pdfBuffer }) {
+  const safeProjectId = String(projectId).trim();
+  const safeTalentId = String(talentId).trim();
+  const storagePath = buildStoragePath(
+    `certificate/project_${safeProjectId}`,
+    safeTalentId,
+    fileName,
+  );
+  const fileUrl = await uploadBufferToMinio({
+    storagePath,
+    buffer: pdfBuffer,
+    contentType: "application/pdf",
+  });
+
+  return {
+    fileUrl,
+    storagePath,
+  };
+}
+
 async function removeDocumentFile(storagePath) {
   if (!storagePath) {
     return;
@@ -81,5 +112,6 @@ async function removeDocumentFile(storagePath) {
 module.exports = {
   uploadDocumentFile,
   uploadSubmissionProofFile,
+  uploadCertificatePdf,
   removeDocumentFile,
 };

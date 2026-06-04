@@ -6,7 +6,7 @@
 //
 //   GET {AUTH_INTERNAL_URL}/internal/users/:id   header: X-API-key
 //
-// Returns { id, role } or null when the user does not exist.
+// Returns { id, role, name, email } or null when the user does not exist.
 
 function getAuthInternalBaseUrl() {
   return (
@@ -37,6 +37,8 @@ function normalizeUser(body) {
   return {
     id: user.id,
     role: user.role,
+    name: user.name ?? null,
+    email: user.email ?? null,
   };
 }
 

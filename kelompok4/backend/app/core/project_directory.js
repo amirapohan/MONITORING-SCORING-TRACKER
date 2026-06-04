@@ -40,6 +40,7 @@ function normalizeProject(body) {
 
   return {
     id: String(project.id),
+    title: project.title ?? project.projectTitle ?? null,
     status: project.status ?? null,
     clientId: project.clientId ?? project.mitraId ?? null,
     acceptedTalentIds,

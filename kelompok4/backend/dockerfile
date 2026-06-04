@@ -4,6 +4,17 @@ FROM node:18-alpine
 # direktori backend sebagai rootnya (ketika di run)
 WORKDIR /app
 
+# Runtime PDF generation (WeasyPrint) + font dasar untuk sertifikat.
+RUN apk add --no-cache \
+  python3 \
+  py3-pip \
+  cairo \
+  pango \
+  gdk-pixbuf \
+  libffi \
+  ttf-dejavu \
+  weasyprint
+
 # copy file package.json + skalian install
 COPY package*.json ./
 RUN npm install
