@@ -1,0 +1,764 @@
+{
+  "info": {
+    "name": "Kelompok 1 - Identity & SSO (Direct Port 8081 - Full JSON Response)",
+    "description": "Sama persis dengan COMPLETE, tapi mengakses LANGSUNG ke port 8081 (bypass Gateway). Semua response akan berupa JSON murni dari aplikasi, bukan teks Gateway.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://<MASUKKAN_IP_SERVER>:8081",
+      "type": "string",
+      "description": "WAJIB pakai port 8081! Contoh: http://103.x.x.x:8081"
+    },
+    {
+      "key": "internal_api_key",
+      "value": "nexus-internal-api-key",
+      "type": "string",
+      "description": "API Key untuk endpoint /internal. Sesuaikan dengan .env di server."
+    },
+    {
+      "key": "talent_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "talent_refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "talent_user_id",
+      "value": "",
+      "type": "string",
+      "description": "UUID Talent user, otomatis terisi saat Register Talent berhasil."
+    }
+  ],
+  "item": [
+    {
+      "name": "[GET] Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Mengecek status layanan Identity SSO.\n\n### Expected Response\n```json\n{\n  \"success\": true,\n  \"status\": \"ok\",\n  \"service\": \"identity-and-sso-service\",\n  \"uptime\": 1234.56,\n  \"timestamp\": \"2024-01-01T00:00:00.000Z\"\n}\n```"
+      }
+    },
+    {
+      "name": "[GET] Welcome API",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api"
+          ]
+        },
+        "description": "Endpoint root API.\n\n### Expected Response\n```json\n{\n  \"success\": true,\n  \"message\": \"Welcome to identity-and-sso-service API\",\n  \"version\": \"1.0.0\"\n}\n```"
+      }
+    },
+    {
+      "name": "Public - Auth",
+      "item": [
+        {
+          "name": "[GET] Skill Options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/skills/options",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "skills",
+                "options"
+              ]
+            },
+            "description": "Mendapatkan daftar semua pilihan Skill & SubSkill yang valid. Digunakan sebagai data dropdown di form Register/Edit Profil.\n\n### Expected Response\n```json\n{\n  \"success\": true,\n  \"message\": \"Skill options retrieved successfully\",\n  \"data\": {\n    \"skills\": [\"FRONTEND_DEVELOPMENT\", \"BACKEND_DEVELOPMENT\", \"DEVOPS_PLATFORM_ENGINEERING\", \"...dll\"],\n    \"subSkills\": [\"REACT\", \"NODEJS\", \"DOCKER\", \"KUBERNETES\", \"...dll\"]\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Register Talent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if(jsonData.success && jsonData.data && jsonData.data.user) {",
+                  "   pm.collectionVariables.set(\"talent_user_id\", jsonData.data.user.id);",
+                  "   console.log('Talent ID tersimpan:', jsonData.data.user.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"User Talent Baru\",\n    \"email\": \"talent_baru@example.com\",\n    \"password\": \"password123\",\n    \"role\": \"talent\",\n    \"skills\": [\n        \"FRONTEND_DEVELOPMENT\"\n    ],\n    \"subSkills\": [\n        \"REACT\"\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Mendaftarkan user baru dengan role talent atau client. Role admin tidak diizinkan melalui endpoint ini.\n\nScript otomatis menyimpan `id` user ke variabel `talent_user_id` (digunakan untuk Deactivate User).\n\n### Expected Response (201)\n```json\n{\n  \"success\": true,\n  \"message\": \"User registered successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid-otomatis\",\n      \"name\": \"User Talent Baru\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"skills\": [\"FRONTEND_DEVELOPMENT\"],\n      \"subSkills\": [\"REACT\"],\n      \"isActive\": true,\n      \"createdAt\": \"2024-01-01T00:00:00.000Z\",\n      \"updatedAt\": \"2024-01-01T00:00:00.000Z\"\n    }\n  }\n}\n```\n\n### Error: Email sudah terdaftar (409)\n```json\n{\n  \"success\": false,\n  \"message\": \"Email already registered\"\n}\n```\n\n### Error: Rate limit (429) - Maksimal 5x per jam\n```json\n{\n  \"success\": false,\n  \"message\": \"Too many requests, please try again later\",\n  \"retryAfter\": 3540\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Login Talent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if(jsonData.success && jsonData.data) {",
+                  "   pm.collectionVariables.set('talent_access_token', jsonData.data.accessToken);",
+                  "   pm.collectionVariables.set('talent_refresh_token', jsonData.data.refreshToken);",
+                  "   console.log('Token Talent berhasil disimpan!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"talent_baru@example.com\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login sebagai Talent. Token Access & Refresh otomatis tersimpan ke Collection Variables (`talent_access_token`, `talent_refresh_token`).\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"refreshToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"User Talent Baru\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"skills\": [\"FRONTEND_DEVELOPMENT\"],\n      \"subSkills\": [\"REACT\"],\n      \"isActive\": true\n    }\n  }\n}\n```\n\n### Error: Kredensial salah (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Invalid credentials or account is inactive\"\n}\n```\n\n### Error: Rate limit (429) - Maksimal 10x per 15 menit\n```json\n{\n  \"success\": false,\n  \"message\": \"Too many requests, please try again later\",\n  \"retryAfter\": 720\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Google OAuth Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if(jsonData.success && jsonData.data) {",
+                  "   pm.collectionVariables.set('talent_access_token', jsonData.data.accessToken);",
+                  "   pm.collectionVariables.set('talent_refresh_token', jsonData.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idToken\": \"PASTE_GOOGLE_ID_TOKEN_DISINI\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/google",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "google"
+              ]
+            },
+            "description": "Login atau Register otomatis menggunakan Google ID Token. Jika email belum terdaftar, sistem akan membuat akun baru secara otomatis.\n\n**Cara mendapat Google ID Token:** Gunakan Google Sign-In di frontend lalu ambil `credential` dari response Google.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Google login successful\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"refreshToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"Nama dari Google\",\n      \"email\": \"user@gmail.com\",\n      \"role\": \"talent\",\n      \"skills\": [],\n      \"subSkills\": [],\n      \"isActive\": true\n    }\n  }\n}\n```\n\n### Error: idToken tidak valid (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Invalid Google token\"\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Register via Google (Auto-Register)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data) {",
+                  "    pm.collectionVariables.set(\"talent_access_token\", jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set(\"talent_refresh_token\", jsonData.data.refreshToken);",
+                  "    console.log(\"Google Auto-Register berhasil! Role otomatis: client\");",
+                  "    console.log(\"User ID:\", jsonData.data.user.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idToken\": \"PASTE_GOOGLE_ID_TOKEN_DARI_OAUTH_PLAYGROUND_DISINI\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/google",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "google"
+              ]
+            },
+            "description": "## Register / Login Otomatis via Google (SSO)\n\nEndpoint ini berfungsi GANDA:\n- Jika email Google **BELUM** terdaftar -> otomatis **REGISTER** akun baru dengan role **client**\n- Jika email Google **SUDAH** terdaftar -> otomatis **LOGIN** langsung\n\nAnda tidak perlu mendaftar secara manual terlebih dahulu!\n\n---\n\n## Cara Mendapatkan Google ID Token\n\n**Langkah 1:** Buka https://developers.google.com/oauthplayground\n\n**Langkah 2:** Di kolom kiri, cari dan expand \"Google OAuth2 API v2\", lalu centang:\n- https://www.googleapis.com/auth/userinfo.email\n- https://www.googleapis.com/auth/userinfo.profile\n\n**Langkah 3:** Klik tombol \"Authorize APIs\" -> Login dengan akun Google Anda.\n\n**Langkah 4:** Klik tombol \"Exchange authorization code for tokens\".\n\n**Langkah 5:** Di panel kanan, cari tulisan id_token. Copy seluruh nilai string panjang (berawalan eyJ...) tersebut.\n\n**Langkah 6:** Paste ke field \"idToken\" di body request ini, lalu klik Send.\n\n---\n\n## Expected Response - Akun Baru (Register Otomatis)\n```json\n{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"refreshToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"user\": {\n      \"id\": \"uuid-baru-otomatis\",\n      \"name\": \"Nama dari Profil Google\",\n      \"email\": \"email@gmail.com\",\n      \"role\": \"client\",\n      \"skills\": [],\n      \"subSkills\": [],\n      \"isActive\": true\n    }\n  }\n}\n```\n\n## Expected Response - Akun Sudah Ada (Login Otomatis)\n```json\n{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"user\": {\n      \"role\": \"client\",\n      \"isActive\": true\n    }\n  }\n}\n```\n\n## Error: Token tidak valid / kadaluarsa (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Invalid Google idToken\"\n}\n```\n> Solusi: Ulangi langkah di OAuth Playground. Token Google hanya berlaku sekitar 1 jam."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Protected - Semua Role",
+      "item": [
+        {
+          "name": "[POST] Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if(jsonData.success && jsonData.data) {",
+                  "   pm.collectionVariables.set('talent_access_token', jsonData.data.accessToken);",
+                  "   console.log('Access Token Talent berhasil diperbarui!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"{{talent_refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Memperbarui Access Token yang sudah kedaluwarsa menggunakan Refresh Token. Access Token baru otomatis tersimpan.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Access token refreshed\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...(Token Baru)\"\n  }\n}\n```\n\n### Error: Refresh Token tidak valid/kedaluwarsa (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Invalid or expired refresh token\"\n}\n```"
+          }
+        },
+        {
+          "name": "[GET] Get Profile (Talent)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{talent_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "description": "Mendapatkan data profil lengkap milik user yang sedang login.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Profile retrieved successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"User Talent Baru\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"skills\": [\"FRONTEND_DEVELOPMENT\"],\n      \"subSkills\": [\"REACT\"],\n      \"isActive\": true,\n      \"createdAt\": \"2024-01-01T00:00:00.000Z\",\n      \"updatedAt\": \"2024-01-01T00:00:00.000Z\",\n      \"projectCompletions\": [\n        {\n          \"id\": \"uuid\",\n          \"projectId\": \"proj-001\",\n          \"tokenId\": \"123\",\n          \"ipfsUri\": \"ipfs://...\",\n          \"completionDate\": \"2024-01-01T00:00:00.000Z\"\n        }\n      ]\n    }\n  }\n}\n```\n\n### Error: Token tidak ada (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Unauthorized: No token provided\"\n}\n```"
+          }
+        },
+        {
+          "name": "[PUT] Update Profile (Talent)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{talent_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Nama Talent Updated\",\n    \"skills\": [\n        \"FRONTEND_DEVELOPMENT\",\n        \"BACKEND_DEVELOPMENT\"\n    ],\n    \"subSkills\": [\n        \"REACT\",\n        \"NODEJS\"\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "description": "Memperbarui data profil user (nama, password, skills, subSkills). Semua field bersifat opsional.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Profile updated successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"Nama Talent Updated\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"skills\": [\"FRONTEND_DEVELOPMENT\", \"BACKEND_DEVELOPMENT\"],\n      \"subSkills\": [\"REACT\", \"NODEJS\"],\n      \"isActive\": true\n    }\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Logout (Talent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{talent_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"{{talent_refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Mencabut sesi Talent. Access Token masuk ke Blacklist Redis, Refresh Token dihapus dari database.\n\n**PERHATIAN:** Setelah Logout, token yang digunakan tidak bisa dipakai lagi. Harus Login ulang.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Logged out successfully\"\n}\n```"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Only",
+      "item": [
+        {
+          "name": "[POST] Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if(jsonData.success && jsonData.data) {",
+                  "   pm.collectionVariables.set('admin_access_token', jsonData.data.accessToken);",
+                  "   pm.collectionVariables.set('admin_refresh_token', jsonData.data.refreshToken);",
+                  "   console.log('Token Admin berhasil disimpan!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login sebagai Admin. Token Admin otomatis tersimpan ke `admin_access_token` dan `admin_refresh_token`.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"refreshToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"Admin Utama\",\n      \"email\": \"admin@example.com\",\n      \"role\": \"admin\",\n      \"isActive\": true\n    }\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "[GET] Get Profile (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "description": "Mendapatkan data profil Admin yang sedang login.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Profile retrieved successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"Admin Utama\",\n      \"email\": \"admin@example.com\",\n      \"role\": \"admin\",\n      \"isActive\": true,\n      \"projectCompletions\": []\n    }\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Register Admin Baru",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Admin Kedua\",\n    \"email\": \"admin2@example.com\",\n    \"password\": \"password123\",\n    \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register/admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register",
+                "admin"
+              ]
+            },
+            "description": "Mendaftarkan user baru dengan role apapun (talent, client, atau admin). HANYA bisa diakses oleh Admin.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"User registered successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid-baru\",\n      \"name\": \"Admin Kedua\",\n      \"email\": \"admin2@example.com\",\n      \"role\": \"admin\",\n      \"isActive\": true\n    }\n  }\n}\n```\n\n### Error: Bukan Admin (403)\n```json\n{\n  \"success\": false,\n  \"message\": \"Forbidden: You do not have permission to access this resource\"\n}\n```"
+          }
+        },
+        {
+          "name": "[PATCH] Deactivate User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/users/{{talent_user_id}}/deactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "users",
+                "{{talent_user_id}}",
+                "deactivate"
+              ]
+            },
+            "description": "Menonaktifkan akun user target. Setelah dinonaktifkan, user tidak bisa login lagi. HANYA bisa diakses oleh Admin.\n\n**Catatan:** Variabel `{{talent_user_id}}` otomatis terisi dari hasil Register Talent di atas. Anda juga bisa menggantinya manual dengan UUID user lain.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"User deactivated successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid-target\",\n      \"name\": \"User Talent Baru\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"isActive\": false\n    }\n  }\n}\n```\n\n### Error: Admin tidak bisa mematikan dirinya sendiri (400)\n```json\n{\n  \"success\": false,\n  \"message\": \"Cannot deactivate your own account\"\n}\n```\n\n### Error: User tidak ditemukan (404)\n```json\n{\n  \"success\": false,\n  \"message\": \"User not found\"\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Logout Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"{{admin_refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Mencabut sesi Admin. Token Admin masuk ke Blacklist Redis, Refresh Token dihapus dari database.\n\n**PERHATIAN:** Setelah Logout, Anda harus Login Admin kembali untuk mengakses fitur admin lagi.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Logged out successfully\"\n}\n```"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Internal API (Antar Microservice)",
+      "item": [
+        {
+          "name": "[GET] List All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{internal_api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internal/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "users"
+              ]
+            },
+            "description": "Mendapatkan semua data user. Digunakan oleh microservice lain (Bidding, Match, dll).\n\n**Autentikasi:** Menggunakan `x-api-key` header, bukan Bearer Token.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Users retrieved\",\n  \"data\": {\n    \"users\": [\n      {\n        \"id\": \"uuid\",\n        \"name\": \"User Talent Baru\",\n        \"email\": \"talent_baru@example.com\",\n        \"role\": \"talent\",\n        \"skills\": [\"FRONTEND_DEVELOPMENT\"],\n        \"isActive\": true\n      }\n    ],\n    \"total\": 1\n  }\n}\n```\n\n### Error: API Key salah (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Unauthorized: Invalid API key\"\n}\n```"
+          }
+        },
+        {
+          "name": "[GET] Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{internal_api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internal/users/{{talent_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "users",
+                "{{talent_user_id}}"
+              ]
+            },
+            "description": "Mendapatkan data user berdasarkan UUID. Digunakan oleh microservice lain.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"User found\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"User Talent Baru\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"skills\": [\"FRONTEND_DEVELOPMENT\"],\n      \"isActive\": true\n    }\n  }\n}\n```\n\n### Error: User tidak ditemukan (404)\n```json\n{\n  \"success\": false,\n  \"message\": \"User not found\"\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Validate Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{internal_api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"token\": \"{{talent_access_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/internal/validate-token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "validate-token"
+              ]
+            },
+            "description": "Memvalidasi JWT Access Token. Digunakan oleh microservice lain (Bidding, Match, dll) untuk memverifikasi identitas user.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Token is valid\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"uuid\",\n      \"name\": \"User Talent Baru\",\n      \"email\": \"talent_baru@example.com\",\n      \"role\": \"talent\",\n      \"jti\": \"unique-jwt-id\",\n      \"iat\": 1700000000,\n      \"exp\": 1700000900\n    }\n  }\n}\n```\n\n### Error: Token tidak valid (401)\n```json\n{\n  \"success\": false,\n  \"message\": \"Invalid or expired token\"\n}\n```"
+          }
+        },
+        {
+          "name": "[GET] List Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{internal_api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internal/audit-logs?limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Jumlah log yang ingin ditampilkan"
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Filter berdasarkan UUID user"
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Filter: LOGIN_SUCCESS | LOGIN_FAILED | LOGOUT | REGISTER | TOKEN_REFRESH | USER_DEACTIVATED | PROJECT_COMPLETED"
+                }
+              ]
+            },
+            "description": "Mendapatkan riwayat audit log semua aktivitas. Mendukung filter berdasarkan userId, action, dan limit.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Audit logs retrieved\",\n  \"data\": {\n    \"logs\": [\n      {\n        \"id\": \"uuid\",\n        \"action\": \"LOGIN_SUCCESS\",\n        \"userId\": \"uuid-user\",\n        \"ip\": \"103.x.x.x\",\n        \"userAgent\": \"PostmanRuntime/7.x\",\n        \"metadata\": {},\n        \"createdAt\": \"2024-01-01T00:00:00.000Z\"\n      },\n      {\n        \"id\": \"uuid\",\n        \"action\": \"REGISTER\",\n        \"userId\": \"uuid-user\",\n        \"ip\": \"103.x.x.x\",\n        \"metadata\": { \"role\": \"talent\" },\n        \"createdAt\": \"2024-01-01T00:00:00.000Z\"\n      }\n    ],\n    \"total\": 2\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "[POST] Create Project Completion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{internal_api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"talent_id\": \"{{talent_user_id}}\",\n    \"project_id\": \"PROJECT-001\",\n    \"token_id\": \"NFT-TOKEN-123\",\n    \"ipfs_uri\": \"ipfs://QmExampleHash123...\",\n    \"completion_date\": \"2024-06-01T10:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/internal/project-completions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "project-completions"
+              ]
+            },
+            "description": "Mencatat penyelesaian proyek oleh Talent (digunakan oleh Bidding Service atau Tracker Service).\n\n**PENTING:** `talent_id` harus berupa UUID user yang valid dan ber-role `talent`.\n\n### Expected Response (201)\n```json\n{\n  \"success\": true,\n  \"message\": \"Project completion recorded\",\n  \"data\": {\n    \"completion\": {\n      \"id\": \"uuid\",\n      \"talentId\": \"uuid-talent\",\n      \"projectId\": \"PROJECT-001\",\n      \"tokenId\": \"NFT-TOKEN-123\",\n      \"ipfsUri\": \"ipfs://QmExampleHash123...\",\n      \"completionDate\": \"2024-06-01T10:00:00.000Z\",\n      \"createdAt\": \"2024-01-01T00:00:00.000Z\"\n    }\n  }\n}\n```\n\n### Error: Bukan Talent (400)\n```json\n{\n  \"success\": false,\n  \"message\": \"User is not a talent\"\n}\n```\n\n### Error: Project sudah dicatat sebelumnya (409)\n```json\n{\n  \"success\": false,\n  \"message\": \"Project completion already exists\"\n}\n```"
+          }
+        },
+        {
+          "name": "[GET] List Project Completions by Talent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{internal_api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internal/talents/{{talent_user_id}}/project-completions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "talents",
+                "{{talent_user_id}}",
+                "project-completions"
+              ]
+            },
+            "description": "Mendapatkan semua riwayat proyek yang telah diselesaikan oleh Talent tertentu.\n\n### Expected Response (200)\n```json\n{\n  \"success\": true,\n  \"message\": \"Project completions retrieved\",\n  \"data\": {\n    \"completions\": [\n      {\n        \"id\": \"uuid\",\n        \"talentId\": \"uuid-talent\",\n        \"projectId\": \"PROJECT-001\",\n        \"tokenId\": \"NFT-TOKEN-123\",\n        \"ipfsUri\": \"ipfs://QmExampleHash123...\",\n        \"completionDate\": \"2024-06-01T10:00:00.000Z\"\n      }\n    ],\n    \"total\": 1\n  }\n}\n```\n\n### Error: talentId bukan UUID valid (422)\n```json\n{\n  \"success\": false,\n  \"message\": \"talentId must be a valid UUID\"\n}\n```"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -87,6 +87,7 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-nexus-internal-api-key}
       REDIS_URL: redis://redis-main:6379
       RABBITMQ_URL: amqp://${RABBIT_USER:-guest}:${RABBIT_PASS:-guest}@100.104.36.45:5672
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     # dev target CMD does not migrate; apply migrations before starting.
     command:
       [
