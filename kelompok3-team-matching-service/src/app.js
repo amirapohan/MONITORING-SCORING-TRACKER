@@ -11,16 +11,16 @@ const app = express();
 app.use(express.json());
 
 // Public health check
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'team-matching', version: 'v4-student-name' }));
+app.get('/match/health', (req, res) => res.json({ status: 'ok', service: 'team-matching', version: 'v4-student-name' }));
 
 // Protected example route
-app.get('/me', auth, (req, res) => {
+app.get('/match/me', auth, (req, res) => {
   // `req.user` is populated by auth middleware
   res.json({ user: req.user });
 });
 
 // Direct invite response route to ensure endpoint #6 is always mounted
-app.put('/invites/:id/respond', auth, async (req, res) => {
+app.put('/match/invites/:id/respond', auth, async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'student') {
       return res.status(403).json({ error: 'forbidden', detail: 'Only student can perform this action' });
@@ -77,18 +77,18 @@ app.put('/invites/:id/respond', auth, async (req, res) => {
 });
 
 // Pool routes
-app.use(poolRoutes);
+app.use('/match', poolRoutes);
 
 // Team routes
-app.use(teamRoutes);
+app.use('/match', teamRoutes);
 
 // Recommendation routes
-app.use(recommendationRoutes);
+app.use('/match', recommendationRoutes);
 
 // Internal routes
-app.use(internalRoutes);
+app.use('/match', internalRoutes);
 
 // Profile routes
-app.use(profileRoutes);
+app.use('/match', profileRoutes);
 
 module.exports = app;

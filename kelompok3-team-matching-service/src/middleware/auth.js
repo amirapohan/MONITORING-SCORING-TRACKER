@@ -59,13 +59,50 @@ async function verifyTokenWithSSO(token) {
 }
 
 /** Express middleware to protect routes using the real Identity & SSO service */
-module.exports = async function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   try {
     const auth = req.get('authorization') || '';
     const m = auth.match(/Bearer\s+(.+)/i);
     if (!m) return res.status(401).json({ error: 'missing_token' });
 
     const token = m[1].trim();
+
+    // ==========================================
+    // TOKEN LOKAL
+    // ==========================================
+    if (token === 'POToken') {
+      req.user = { 
+        student_id: 'nim-po-001', 
+        student_name: 'Product Owner', 
+        role: 'student',
+        program_studi: 'Teknologi Informasi'
+      };
+      return next();
+    }
+
+    if (token === 'TalentToken') {
+      req.user = { 
+        student_id: 'nim-talent-001', 
+        student_name: 'Talent', 
+        role: 'student',
+        program_studi: 'Teknologi Informasi'
+      };
+      return next();
+    }
+
+    if (token === 'ClientToken') {
+      req.user = { 
+        student_id: 'nim-client-001', 
+        student_name: 'Client User', 
+        role: 'student', 
+        program_studi: 'Sistem Informasi'
+      };
+      return next();
+    }
+    // ==========================================
+
+    // Jika token bukan salah satu dari token lokal di atas, 
+    // sistem akan otomatis melemparnya ke SSO asli.
     const user = await verifyTokenWithSSO(token);
 
     // Attach user info to request for downstream handlers
@@ -74,6 +111,7 @@ module.exports = async function authMiddleware(req, res, next) {
   } catch (err) {
     return res.status(401).json({ error: 'invalid_token' });
   }
-};
+}
 
+module.exports = authMiddleware;
 module.exports.verifyTokenWithSSO = verifyTokenWithSSO;

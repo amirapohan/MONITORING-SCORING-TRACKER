@@ -2,7 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const { 
   createTeam, inviteMemberToTeam, respondToInvite, getPoolEntryByStudentAndPeriod,
-  updateRequiredSkills, getTeamList, getTeamDetail, createJoinRequest, respondJoinRequest, removeMember, getTeamByPoStudentId
+  updateRequiredSkills, getTeamList, getTeamListBySkill, getTeamDetail, createJoinRequest, respondJoinRequest, removeMember, getTeamByPoStudentId
 } = require('../services/teamService');
 
 const router = express.Router();

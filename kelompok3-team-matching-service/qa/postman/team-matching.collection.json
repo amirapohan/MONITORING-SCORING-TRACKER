@@ -1,0 +1,793 @@
+{
+  "info": {
+    "name": "Team Matching Service",
+    "_postman_id": "8aefc4c4-5b65-4f8a-9a63-7ef5a1111111",
+    "description": "Importable Postman collection generated from the real Team Matching Service source code.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_exported_using": "Copilot"
+  },
+  "item": [
+    {
+      "name": "Phase 0 - Public",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{BASE}}/match/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Health response is ok', function () {",
+                  "  pm.expect(body).to.have.property('status', 'ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 1 - Authentication",
+      "item": [
+        {
+          "name": "POST /auth/register - Register Client",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"CV Sumber Rejeki\",\n  \"email\": \"cv.sumberrejeki.07@nexus.dev\",\n  \"password\": \"Passw0rd!23\",\n  \"role\": \"client\"\n}"
+            },
+            "url": "{{BASE}}/auth/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Register response is successful', function () {",
+                  "  pm.expect(body).to.have.property('success', true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login - Login Client",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cv.sumberrejeki.07@nexus.dev\",\n  \"password\": \"Passw0rd!23\"\n}"
+            },
+            "url": "{{BASE}}/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Login response has data', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});",
+                  "if (body && body.data) {",
+                  "  if (body.data.accessToken) pm.environment.set('clientToken', body.data.accessToken);",
+                  "  if (body.data.user && body.data.user.id) pm.environment.set('clientId', body.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /me - Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('User object exists', function () {",
+                  "  pm.expect(body).to.have.property('user');",
+                  "});",
+                  "if (body && body.user) {",
+                  "  if (body.user.student_id) pm.environment.set('studentId', body.user.student_id);",
+                  "  if (body.user.id) pm.environment.set('userId', body.user.id);",
+                  "  if (body.user.student_name) pm.environment.set('studentName', body.user.student_name);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 2 - Talent Pool",
+      "item": [
+        {
+          "name": "POST /pool - Join Pool (Student)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"program_studi\": \"{{programStudi}}\",\n  \"sdg_topics\": [1, 4],\n  \"availability\": \"full-time\",\n  \"notes\": \"QA demo pool join\",\n  \"period\": \"{{period}}\",\n  \"skills\": [\n    { \"name\": \"design\", \"level\": 3 },\n    { \"name\": \"programming\", \"level\": 4 }\n  ]\n}"
+            },
+            "url": "{{BASE}}/match/pool"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Pool entry exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});",
+                  "if (body && body.data) {",
+                  "  if (body.data.id) pm.environment.set('poolEntryId', body.data.id);",
+                  "  if (body.data.period) pm.environment.set('period', body.data.period);",
+                  "  if (body.data.program_studi) pm.environment.set('programStudi', body.data.program_studi);",
+                  "  if (body.data.student_id) pm.environment.set('studentId', body.data.student_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /pool - Get Pool List",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/pool?period={{period}}&status={{status}}&page={{page}}&limit={{limit}}&skill={{skill}}&program_studi={{programStudi}}&sdg_topic={{sdgTopic}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Paged response exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "  pm.expect(body).to.have.property('total');",
+                  "});",
+                  "if (body && body.data && body.data.length > 0 && body.data[0].id) {",
+                  "  pm.environment.set('poolEntryId', body.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /profile/skills - Get Profile Skills",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/profile/skills?period={{period}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 404', function () {",
+                  "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  var body = pm.response.json();",
+                  "  pm.test('Profile payload exists', function () {",
+                  "    pm.expect(body).to.have.property('data');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /profile/skills - Update Profile Skills",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period\": \"{{period}}\",\n  \"sdg_topics\": [1, 4],\n  \"skills\": {\n    \"design\": 4,\n    \"programming\": 5\n  }\n}"
+            },
+            "url": "{{BASE}}/match/profile/skills"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.environment.set('profileUpdated', 'true');",
+                  "var body = pm.response.json();",
+                  "pm.test('Profile update response exists', function () {",
+                  "  pm.expect(body).to.have.property('success', true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 3 - Team Management",
+      "item": [
+        {
+          "name": "POST /teams - Create Team (PO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{teamName}}\",\n  \"period\": \"{{period}}\"\n}"
+            },
+            "url": "{{BASE}}/match/teams"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "if (body && body.data) {",
+                  "  if (body.data.id) pm.environment.set('teamId', body.data.id);",
+                  "  if (body.data.period) pm.environment.set('period', body.data.period);",
+                  "  if (body.data.name) pm.environment.set('teamName', body.data.name);",
+                  "}",
+                  "pm.test('Team created payload exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /teams - Get Team List",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/teams?needs_skill={{needsSkill}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Team list exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});",
+                  "if (body && body.data && body.data.length > 0 && body.data[0].id) {",
+                  "  pm.environment.set('listedTeamId', body.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /teams/:id - Get Team Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/teams/{{teamId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Team detail exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});",
+                  "if (body && body.data && body.data.period) {",
+                  "  pm.environment.set('teamPeriod', body.data.period);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /teams/:id/required-skills - Update Required Skills (PO)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"required_skills\": [\n    { \"name\": \"design\", \"count\": 1 },\n    { \"name\": \"programming\", \"count\": 2 }\n  ]\n}"
+            },
+            "url": "{{BASE}}/match/teams/{{teamId}}/required-skills"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Required skills updated', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 4 - Invitation Flow",
+      "item": [
+        {
+          "name": "POST /teams/:id/invites - Invite Member (PO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invitee_student_id\": \"{{inviteeStudentId}}\",\n  \"message\": \"Please join our team\"\n}"
+            },
+            "url": "{{BASE}}/match/teams/{{teamId}}/invites"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "if (body && body.data) {",
+                  "  if (body.data.id) pm.environment.set('inviteId', body.data.id);",
+                  "  if (body.data.invitee_student_id) pm.environment.set('inviteeStudentId', body.data.invitee_student_id);",
+                  "}",
+                  "pm.test('Invite payload exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /invites/:id/respond - Accept Invite",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"accepted\"\n}"
+            },
+            "url": "{{BASE}}/match/invites/{{inviteId}}/respond"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Invite accepted response exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});",
+                  "pm.environment.set('inviteResponse', 'accepted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /invites/:id/respond - Reject Invite",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"rejected\"\n}"
+            },
+            "url": "{{BASE}}/match/invites/{{inviteId}}/respond"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.environment.set('inviteResponse', 'rejected');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 5 - Join Request Flow",
+      "item": [
+        {
+          "name": "POST /teams/:id/join-requests - Create Join Request (Student)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I want to join this team\"\n}"
+            },
+            "url": "{{BASE}}/match/teams/{{teamId}}/join-requests"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "if (body && body.data && body.data.id) {",
+                  "  pm.environment.set('requestId', body.data.id);",
+                  "}",
+                  "pm.test('Join request payload exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /teams/:id/join-requests/:req_id - Accept Join Request",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"accepted\"\n}"
+            },
+            "url": "{{BASE}}/match/teams/{{teamId}}/join-requests/{{requestId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.environment.set('joinRequestResponse', 'accepted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /teams/:id/join-requests/:req_id - Reject Join Request",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"rejected\"\n}"
+            },
+            "url": "{{BASE}}/match/teams/{{teamId}}/join-requests/{{requestId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.environment.set('joinRequestResponse', 'rejected');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 6 - Recommendation",
+      "item": [
+        {
+          "name": "GET /recommendations/members - Recommend Members for Team (PO)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/recommendations/members?team_id={{teamId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 403', function () {",
+                  "  pm.expect([200, 403, 404]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  var body = pm.response.json();",
+                  "  pm.test('Recommendations payload exists', function () {",
+                  "    pm.expect(body).to.have.property('data');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /recommendations/teams - Recommend Teams for Student",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/recommendations/teams?period={{period}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var body = pm.response.json();",
+                  "pm.test('Team recommendation payload exists', function () {",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 7 - Member Management",
+      "item": [
+        {
+          "name": "DELETE /members/:sid - Remove Member (PO)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/members/{{targetStudentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 404', function () {",
+                  "  pm.expect([200, 404, 403]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  pm.environment.set('memberRemoved', 'true');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /teams/:id/members/me - Leave Team (Member)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/teams/{{teamId}}/members/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 404', function () {",
+                  "  pm.expect([200, 404, 400, 403]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  pm.environment.set('leftTeam', 'true');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /teams/:id/members/:sid - Remove Member by Team",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientToken}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/teams/{{teamId}}/members/{{targetStudentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 403', function () {",
+                  "  pm.expect([200, 403, 404, 400]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  pm.environment.set('memberRemoved', 'true');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 8 - Internal Service",
+      "item": [
+        {
+          "name": "GET /internal/check-team/:student_id - Internal Team Check",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-service-key", "value": "{{serviceKey}}", "type": "text" }
+            ],
+            "url": "{{BASE}}/match/internal/check-team/{{studentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 401', function () {",
+                  "  pm.expect([200, 401]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  var body = pm.response.json();",
+                  "  if (body && body.data && typeof body.data.has_team !== 'undefined') {",
+                  "    pm.environment.set('hasTeam', String(body.data.has_team));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
